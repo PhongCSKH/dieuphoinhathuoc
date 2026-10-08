@@ -26,6 +26,7 @@ export interface DispatchRules {
   crowdedThreshold: number; // e.g. 5 (ngưỡng đông)
   soundEnabled: boolean; // Bật/tắt âm thanh cảnh báo
   telemetryInterval: number; // in seconds (e.g. 4)
+  noCounterAlertDelaySeconds?: number; // Độ trễ cảnh báo khi có khách chờ nhưng chưa mở quầy (giây)
 }
 
 export interface DispatchAlert {

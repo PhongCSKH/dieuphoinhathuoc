@@ -77,6 +77,7 @@ export const DEFAULT_RULES: DispatchRules = {
   crowdedThreshold: 5,     // Ngưỡng đông khách
   soundEnabled: true,      // Bật âm thanh chuông báo
   telemetryInterval: 4,    // Chu kỳ cập nhật (giây)
+  noCounterAlertDelaySeconds: 60, // Độ trễ cảnh báo khi có khách chờ nhưng chưa mở quầy (60 giây)
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {

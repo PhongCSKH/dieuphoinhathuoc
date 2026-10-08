@@ -224,14 +224,20 @@ export const App: React.FC = () => {
         })
       );
 
-      if (isMounted && hasChanges) {
+      const isAnyNoCounterPending = updatedList.some(
+        (p) => p.enabled && (p.stats?.waitingCount || 0) > 0 && (p.stats?.activeCounters.length || 0) === 0
+      );
+
+      if (isMounted && (hasChanges || isAnyNoCounterPending)) {
         const { alerts: newAlerts, soundType } = evaluateDispatchRules(
           updatedList,
           rules,
           prevPharmaciesRef.current
         );
 
-        setPharmacies(updatedList);
+        if (hasChanges) {
+          setPharmacies(updatedList);
+        }
         setAlerts(newAlerts);
 
         if (rules.soundEnabled && soundType) {

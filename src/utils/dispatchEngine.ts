@@ -8,6 +8,8 @@ interface OverloadBaseline {
 
 // Lưu mốc số quầy tại thời điểm bắt đầu phát cảnh báo quá tải cho từng nhà thuốc
 const baselineMap = new Map<string, OverloadBaseline>();
+// Lưu thời điểm xuất hiện khách chờ đầu tiên khi chưa có quầy mở (ms)
+const noCounterStartMap = new Map<string, number>();
 
 export function evaluateDispatchRules(
   pharmacies: PharmacyScreen[],
@@ -27,24 +29,40 @@ export function evaluateDispatchRules(
     const waiting = stats.waitingCount;
     const counterCount = stats.activeCounters.length;
 
-    // Tình huống 5: Có khách chờ nhưng chưa mở quầy nào
+    // Tình huống 5: Có khách chờ nhưng chưa mở quầy nào (Áp dụng độ trễ cấu hình)
     if (waiting > 0 && counterCount === 0) {
-      alerts.push({
-        id: `no-counter-${p.id}`,
-        type: 'no_counter',
-        severity: 'danger',
-        pharmacyId: p.id,
-        pharmacyName: p.name,
-        message: `Chưa mở quầy phục vụ tại ${p.name}!`,
-        recommendation: `Mở quầy gấp`,
-        timestamp: Date.now(),
-        metadata: {
-          waitingCount: waiting,
-          totalCounters: 0,
-        },
-      });
-      highestSound = 'danger';
+      if (!noCounterStartMap.has(p.id)) {
+        noCounterStartMap.set(p.id, Date.now());
+      }
+
+      const startTime = noCounterStartMap.get(p.id)!;
+      const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+      const delayThreshold = rules.noCounterAlertDelaySeconds ?? 60;
+
+      // Chỉ kích hoạt cảnh báo nếu đã quá thời gian quy định mà chưa có quầy gọi phục vụ
+      if (elapsedSeconds >= delayThreshold) {
+        alerts.push({
+          id: `no-counter-${p.id}`,
+          type: 'no_counter',
+          severity: 'danger',
+          pharmacyId: p.id,
+          pharmacyName: p.name,
+          message: `Chưa mở quầy phục vụ tại ${p.name}! (Khách chờ ${elapsedSeconds}s)`,
+          recommendation: `Mở quầy gấp`,
+          timestamp: Date.now(),
+          metadata: {
+            waitingCount: waiting,
+            totalCounters: 0,
+          },
+        });
+        highestSound = 'danger';
+      }
       continue;
+    } else {
+      // Khi không còn khách chờ (waiting === 0) hoặc đã có quầy gọi phục vụ (counterCount > 0)
+      if (noCounterStartMap.has(p.id)) {
+        noCounterStartMap.delete(p.id);
+      }
     }
 
     // Tình huống 1 & 2: Quá tải tỉ lệ khách chờ / quầy & Theo dõi quầy tăng cường

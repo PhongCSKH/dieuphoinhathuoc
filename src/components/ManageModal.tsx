@@ -21,7 +21,8 @@ import {
   faTableColumns,
   faTableCells,
   faMaximize,
-  faComments
+  faComments,
+  faClock
 } from '@fortawesome/free-solid-svg-icons';
 import { PharmacyScreen, DispatchRules, LayoutMode } from '../types';
 import { DEFAULT_PHARMACIES, SCALE_OPTIONS } from '../constants';
@@ -567,6 +568,30 @@ export const ManageModal: React.FC<ManageModalProps> = ({
                       />
                       <span>Bật chuông âm thanh</span>
                     </label>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60 space-y-3">
+                  <div className="flex items-center gap-2.5 text-purple-400 font-semibold text-sm">
+                    <FontAwesomeIcon icon={faClock} />
+                    <h3>5. Độ Trễ Báo "Chưa Mở Quầy" (Tình huống 5)</h3>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Khi đang không có khách, nếu có khách mới xuất hiện nhưng chưa được gọi vào quầy, hệ thống sẽ chờ hết số giây này mới phát cảnh báo (tránh báo ảo khi nhân viên chuẩn bị bấm gọi).
+                  </p>
+                  <div className="flex items-center gap-3 pt-1">
+                    <input
+                      type="number"
+                      min={5}
+                      max={600}
+                      step={5}
+                      value={localRules.noCounterAlertDelaySeconds ?? 60}
+                      onChange={(e) => setLocalRules({ ...localRules, noCounterAlertDelaySeconds: Math.max(0, parseInt(e.target.value) || 0) })}
+                      className="w-24 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-sm font-bold text-white text-center outline-none focus:border-purple-500"
+                    />
+                    <span className="text-xs text-slate-400 font-medium">
+                      giây ({Math.floor((localRules.noCounterAlertDelaySeconds ?? 60) / 60)} phút {(localRules.noCounterAlertDelaySeconds ?? 60) % 60}s) (Mặc định: 60s)
+                    </span>
                   </div>
                 </div>
               </div>
