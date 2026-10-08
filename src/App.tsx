@@ -1,13 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { PharmacyScreen, LayoutMode } from './types';
-import { DEFAULT_PHARMACIES } from './constants';
+import React, { useState, useEffect, useRef } from 'react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faXmark, faEye } from '@fortawesome/free-solid-svg-icons';
+import { PharmacyScreen, LayoutMode, DispatchRules, DispatchAlert } from './types';
+import { DEFAULT_PHARMACIES, DEFAULT_RULES } from './constants';
 import { Header } from './components/Header';
 import { PharmacyCard } from './components/PharmacyCard';
 import { ManageModal } from './components/ManageModal';
-import { X, Sparkles } from 'lucide-react';
+import { AlertBanner } from './components/AlertBanner';
+import { evaluateDispatchRules } from './utils/dispatchEngine';
+import { soundManager } from './utils/audio';
 
 export const App: React.FC = () => {
-  // Load saved pharmacies or use defaults
+  // 1. Pharmacies state
   const [pharmacies, setPharmacies] = useState<PharmacyScreen[]>(() => {
     try {
       const saved = localStorage.getItem('dieu_phoi_pharmacies');
@@ -21,30 +25,39 @@ export const App: React.FC = () => {
     return DEFAULT_PHARMACIES;
   });
 
-  // Layout mode (default: grid-4)
+  // Previous pharmacies ref for diffing events
+  const prevPharmaciesRef = useRef<PharmacyScreen[]>(pharmacies);
+
+  // 2. Rules state
+  const [rules, setRules] = useState<DispatchRules>(() => {
+    try {
+      const saved = localStorage.getItem('dieu_phoi_rules');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error(e);
+    }
+    return DEFAULT_RULES;
+  });
+
+  // 3. Layout state
   const [layout, setLayout] = useState<LayoutMode>(() => {
     return (localStorage.getItem('dieu_phoi_layout') as LayoutMode) || 'grid-4';
   });
 
-  // Global scale for all screens
+  // 4. Global scale
   const [globalScale, setGlobalScale] = useState<number>(() => {
     const saved = localStorage.getItem('dieu_phoi_scale');
     return saved ? parseFloat(saved) : 0.85;
   });
 
-  // Focused single pharmacy (null = grid mode)
+  // 5. Active Alerts
+  const [alerts, setAlerts] = useState<DispatchAlert[]>([]);
+
+  // 6. UI flags
   const [focusPharmacyId, setFocusPharmacyId] = useState<string | null>(null);
-
-  // Fullscreen state
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-
-  // Carousel mode (auto rotation)
   const [carouselActive, setCarouselActive] = useState<boolean>(false);
-
-  // Modal open
   const [isManageOpen, setIsManageOpen] = useState<boolean>(false);
-
-  // Refresh all trigger
   const [globalRefreshCount, setGlobalRefreshCount] = useState<number>(0);
 
   // Save pharmacies
@@ -53,14 +66,26 @@ export const App: React.FC = () => {
     localStorage.setItem('dieu_phoi_pharmacies', JSON.stringify(newPharmacies));
   };
 
-  // Change layout
+  // Save rules
+  const handleSaveRules = (newRules: DispatchRules) => {
+    setRules(newRules);
+    localStorage.setItem('dieu_phoi_rules', JSON.stringify(newRules));
+  };
+
+  // Toggle sound
+  const handleToggleSound = () => {
+    const updated = { ...rules, soundEnabled: !rules.soundEnabled };
+    handleSaveRules(updated);
+  };
+
+  // Layout change
   const handleChangeLayout = (newLayout: LayoutMode) => {
     setLayout(newLayout);
     setFocusPharmacyId(null);
     localStorage.setItem('dieu_phoi_layout', newLayout);
   };
 
-  // Change global scale
+  // Global scale change
   const handleChangeGlobalScale = (scale: number) => {
     setGlobalScale(scale);
     localStorage.setItem('dieu_phoi_scale', scale.toString());
@@ -69,19 +94,22 @@ export const App: React.FC = () => {
     localStorage.setItem('dieu_phoi_pharmacies', JSON.stringify(updated));
   };
 
-  // Update scale for individual pharmacy
+  // Scale per pharmacy
   const handleUpdatePharmacyScale = (id: string, newScale: number) => {
     const updated = pharmacies.map((p) => (p.id === id ? { ...p, scale: newScale } : p));
     setPharmacies(updated);
     localStorage.setItem('dieu_phoi_pharmacies', JSON.stringify(updated));
   };
 
-  // Fullscreen handler
+  // Dismiss alert
+  const handleDismissAlert = (id: string) => {
+    setAlerts((prev) => prev.filter((a) => a.id !== id));
+  };
+
+  // Fullscreen
   const handleToggleFullscreen = () => {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch((err) => {
-        console.error('Error attempting to enable fullscreen:', err);
-      });
+      document.documentElement.requestFullscreen().catch(() => {});
       setIsFullscreen(true);
     } else {
       if (document.exitFullscreen) {
@@ -91,11 +119,8 @@ export const App: React.FC = () => {
     }
   };
 
-  // Listen to native fullscreen changes
   useEffect(() => {
-    const handleFsChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
+    const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', handleFsChange);
     return () => document.removeEventListener('fullscreenchange', handleFsChange);
   }, []);
@@ -104,11 +129,8 @@ export const App: React.FC = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isManageOpen) return;
-
       if (e.key === 'Escape') {
-        if (focusPharmacyId) {
-          setFocusPharmacyId(null);
-        }
+        if (focusPharmacyId) setFocusPharmacyId(null);
       } else if (e.key === '1' && pharmacies[0]) {
         setFocusPharmacyId((prev) => (prev === pharmacies[0].id ? null : pharmacies[0].id));
       } else if (e.key === '2' && pharmacies[1]) {
@@ -121,48 +143,120 @@ export const App: React.FC = () => {
         setFocusPharmacyId(null);
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [focusPharmacyId, isManageOpen, pharmacies]);
 
+  // Periodic Telemetry Ingestion (Fetch QMS queue data)
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchTelemetry = async () => {
+      let hasChanges = false;
+      const updatedList = await Promise.all(
+        pharmacies.map(async (p) => {
+          if (!p.roomId) return p;
+          try {
+            // Direct query or proxy fallback
+            const endpoint = `https://qms.tahospital.vn/api/v1/waitqueue?room=${p.roomId}&status=lcd`;
+            const res = await fetch(endpoint, { cache: 'no-store' });
+            if (res.ok) {
+              const json = await res.json();
+              if (json.data && Array.isArray(json.data.data)) {
+                const items = json.data.data;
+                const waiting = items.filter((i: { status: number }) => i.status === 1).length;
+                const servingItems = items.filter((i: { status: number }) => i.status === 2);
+                const activeCounters = [
+                  ...new Set(
+                    servingItems.map((i: { counter: number | string }) => String(i.counter)).filter(Boolean)
+                  ),
+                ] as string[];
+
+                const newStats = {
+                  waitingCount: waiting,
+                  servingCount: servingItems.length,
+                  activeCounters,
+                  lastUpdated: Date.now(),
+                };
+
+                // Check if changed
+                if (
+                  p.stats?.waitingCount !== newStats.waitingCount ||
+                  p.stats?.servingCount !== newStats.servingCount ||
+                  p.stats?.activeCounters.length !== newStats.activeCounters.length
+                ) {
+                  hasChanges = true;
+                }
+
+                return { ...p, stats: newStats };
+              }
+            }
+          } catch {
+            // If cross-origin block occurs in standard browser without proxy, keep existing stats
+          }
+          return p;
+        })
+      );
+
+      if (isMounted && hasChanges) {
+        // Evaluate Rules
+        const { alerts: newAlerts, soundType } = evaluateDispatchRules(
+          updatedList,
+          rules,
+          prevPharmaciesRef.current
+        );
+
+        setPharmacies(updatedList);
+        setAlerts(newAlerts);
+
+        if (rules.soundEnabled && soundType) {
+          soundManager.play(soundType);
+        }
+
+        prevPharmaciesRef.current = updatedList;
+      }
+    };
+
+    fetchTelemetry();
+    const interval = setInterval(fetchTelemetry, (rules.telemetryInterval || 4) * 1000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [pharmacies, rules]);
+
   // Carousel auto rotation
   useEffect(() => {
     if (!carouselActive || pharmacies.length === 0) return;
-
     const interval = setInterval(() => {
       setFocusPharmacyId((current) => {
-        if (!current) {
-          return pharmacies[0].id;
-        }
+        if (!current) return pharmacies[0].id;
         const currentIndex = pharmacies.findIndex((p) => p.id === current);
         const nextIndex = (currentIndex + 1) % pharmacies.length;
         return pharmacies[nextIndex].id;
       });
-    }, 20000); // 20s per screen
-
+    }, 20000);
     return () => clearInterval(interval);
   }, [carouselActive, pharmacies]);
 
   const focusedPharmacy = pharmacies.find((p) => p.id === focusPharmacyId);
 
-  // Render grid based on layout mode
+  // Render grid
   const renderGridContent = () => {
-    // If a specific pharmacy is focused
     if (focusedPharmacy) {
       return (
         <div className="relative w-full h-full p-2">
-          {/* Floating Focus Badge */}
           <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 bg-slate-900/90 border border-sky-500/40 text-slate-100 px-4 py-1.5 rounded-full shadow-2xl backdrop-blur-md text-xs font-semibold">
             <span className="flex items-center gap-1.5 text-sky-400">
-              <Sparkles className="w-4 h-4 animate-pulse" />
+              <FontAwesomeIcon icon={faEye} />
               Đang xem chi tiết: {focusedPharmacy.name}
             </span>
             <button
               onClick={() => setFocusPharmacyId(null)}
               className="flex items-center gap-1 px-2.5 py-0.5 bg-sky-600 hover:bg-sky-500 text-white rounded-full transition text-[11px]"
             >
-              <X className="w-3.5 h-3.5" /> Thoát (Esc)
+              <FontAwesomeIcon icon={faXmark} /> Thoát (Esc)
             </button>
           </div>
 
@@ -172,12 +266,12 @@ export const App: React.FC = () => {
             isFocused={true}
             onToggleFocus={() => setFocusPharmacyId(null)}
             onUpdateScale={(s) => handleUpdatePharmacyScale(focusedPharmacy.id, s)}
+            alerts={alerts.filter((a) => a.pharmacyId === focusedPharmacy.id)}
           />
         </div>
       );
     }
 
-    // Layout: 2x2 Grid (4 Screens - Default)
     if (layout === 'grid-4') {
       const displayPharmacies = pharmacies.slice(0, 4);
       return (
@@ -189,6 +283,7 @@ export const App: React.FC = () => {
                 isFocused={false}
                 onToggleFocus={() => setFocusPharmacyId(item.id)}
                 onUpdateScale={(s) => handleUpdatePharmacyScale(item.id, s)}
+                alerts={alerts.filter((a) => a.pharmacyId === item.id)}
               />
             </div>
           ))}
@@ -196,13 +291,11 @@ export const App: React.FC = () => {
       );
     }
 
-    // Layout: 1 Large + 3 Small (Split 1-3)
     if (layout === 'split-1-3') {
       const primary = pharmacies[0];
       const sideItems = pharmacies.slice(1, 4);
       return (
         <div className="grid grid-cols-1 lg:grid-cols-3 h-full w-full gap-2 p-2">
-          {/* Main big screen */}
           {primary && (
             <div className="lg:col-span-2 h-full w-full min-h-0">
               <PharmacyCard
@@ -211,11 +304,10 @@ export const App: React.FC = () => {
                 isFocused={false}
                 onToggleFocus={() => setFocusPharmacyId(primary.id)}
                 onUpdateScale={(s) => handleUpdatePharmacyScale(primary.id, s)}
+                alerts={alerts.filter((a) => a.pharmacyId === primary.id)}
               />
             </div>
           )}
-
-          {/* 3 small screens stacked */}
           <div className="grid grid-rows-3 h-full w-full gap-2 min-h-0">
             {sideItems.map((item) => (
               <div key={`${item.id}-${globalRefreshCount}`} className="h-full w-full min-h-0">
@@ -224,6 +316,7 @@ export const App: React.FC = () => {
                   isFocused={false}
                   onToggleFocus={() => setFocusPharmacyId(item.id)}
                   onUpdateScale={(s) => handleUpdatePharmacyScale(item.id, s)}
+                  alerts={alerts.filter((a) => a.pharmacyId === item.id)}
                 />
               </div>
             ))}
@@ -232,7 +325,6 @@ export const App: React.FC = () => {
       );
     }
 
-    // Layout: 1x2 Grid (2 Screens)
     if (layout === 'grid-2') {
       const displayPharmacies = pharmacies.slice(0, 2);
       return (
@@ -244,6 +336,7 @@ export const App: React.FC = () => {
                 isFocused={false}
                 onToggleFocus={() => setFocusPharmacyId(item.id)}
                 onUpdateScale={(s) => handleUpdatePharmacyScale(item.id, s)}
+                alerts={alerts.filter((a) => a.pharmacyId === item.id)}
               />
             </div>
           ))}
@@ -251,7 +344,6 @@ export const App: React.FC = () => {
       );
     }
 
-    // Layout: 2x3 Grid (6 Screens)
     if (layout === 'grid-6') {
       const displayPharmacies = pharmacies.slice(0, 6);
       return (
@@ -263,6 +355,7 @@ export const App: React.FC = () => {
                 isFocused={false}
                 onToggleFocus={() => setFocusPharmacyId(item.id)}
                 onUpdateScale={(s) => handleUpdatePharmacyScale(item.id, s)}
+                alerts={alerts.filter((a) => a.pharmacyId === item.id)}
               />
             </div>
           ))}
@@ -274,8 +367,8 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden">
-      {/* Top Navigation Control Bar */}
+    <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
+      {/* 1. Header Control Bar */}
       <Header
         layout={layout}
         onChangeLayout={handleChangeLayout}
@@ -288,19 +381,27 @@ export const App: React.FC = () => {
         isFullscreen={isFullscreen}
         onToggleFullscreen={handleToggleFullscreen}
         pharmacyCount={pharmacies.length}
+        activeAlertCount={alerts.length}
+        soundEnabled={rules.soundEnabled}
+        onToggleSound={handleToggleSound}
       />
 
-      {/* Main Viewport Container */}
+      {/* 2. Real-time Alert Banner */}
+      <AlertBanner alerts={alerts} onDismiss={handleDismissAlert} />
+
+      {/* 3. Main Viewport Container */}
       <main className="flex-1 w-full h-[calc(100vh-3.5rem)] overflow-hidden bg-slate-950">
         {renderGridContent()}
       </main>
 
-      {/* Configuration & Links Modal */}
+      {/* 4. Configuration & Rules Modal */}
       <ManageModal
         isOpen={isManageOpen}
         onClose={() => setIsManageOpen(false)}
         pharmacies={pharmacies}
         onSavePharmacies={handleSavePharmacies}
+        rules={rules}
+        onSaveRules={handleSaveRules}
       />
     </div>
   );

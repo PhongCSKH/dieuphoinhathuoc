@@ -1,18 +1,22 @@
 import React, { useState, useEffect } from 'react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
-  LayoutGrid, 
-  Grid2X2, 
-  Columns2, 
-  Square, 
-  RefreshCw, 
-  Maximize, 
-  Minimize, 
-  Settings, 
-  Layers,
-  Play,
-  Pause,
-  MonitorCheck
-} from 'lucide-react';
+  faHospitalUser, 
+  faLayerGroup, 
+  faTableCellsLarge, 
+  faSquare, 
+  faTableColumns, 
+  faTableCells, 
+  faRotate, 
+  faSliders, 
+  faExpand, 
+  faCompress, 
+  faPlay, 
+  faPause, 
+  faBell, 
+  faBellSlash,
+  faTriangleExclamation
+} from '@fortawesome/free-solid-svg-icons';
 import { LayoutMode } from '../types';
 import { SCALE_OPTIONS } from '../constants';
 
@@ -28,6 +32,9 @@ interface HeaderProps {
   isFullscreen: boolean;
   onToggleFullscreen: () => void;
   pharmacyCount: number;
+  activeAlertCount: number;
+  soundEnabled: boolean;
+  onToggleSound: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -42,6 +49,9 @@ export const Header: React.FC<HeaderProps> = ({
   isFullscreen,
   onToggleFullscreen,
   pharmacyCount,
+  activeAlertCount,
+  soundEnabled,
+  onToggleSound,
 }) => {
   const [currentTime, setCurrentTime] = useState<string>('');
   const [currentDate, setCurrentDate] = useState<string>('');
@@ -63,11 +73,11 @@ export const Header: React.FC<HeaderProps> = ({
   }, []);
 
   return (
-    <header className="flex-shrink-0 h-14 bg-slate-950/90 border-b border-slate-800/80 px-4 flex items-center justify-between select-none backdrop-blur-md z-20">
+    <header className="flex-shrink-0 h-14 bg-slate-950/95 border-b border-slate-800/80 px-4 flex items-center justify-between select-none backdrop-blur-md z-30">
       {/* Left: Branding & Status */}
       <div className="flex items-center gap-3">
         <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-blue-700 shadow-lg shadow-sky-500/20 text-white font-bold">
-          <MonitorCheck className="w-5 h-5" />
+          <FontAwesomeIcon icon={faHospitalUser} className="text-base" />
         </div>
         <div>
           <div className="flex items-center gap-2">
@@ -78,17 +88,25 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
               Live ({pharmacyCount} Quầy)
             </span>
+
+            {/* Active Alert Badge */}
+            {activeAlertCount > 0 && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 animate-pulse">
+                <FontAwesomeIcon icon={faTriangleExclamation} className="text-[10px]" />
+                {activeAlertCount} Cảnh báo
+              </span>
+            )}
           </div>
           <p className="text-[11px] text-slate-400 hidden md:block">
-            Trung tâm giám sát đa màn hình gọi số QMS
+            Trung tâm giám sát & điều phối gọi số QMS thông minh
           </p>
         </div>
       </div>
 
       {/* Middle: Layout Selector & Global Scale */}
-      <div className="hidden lg:flex items-center gap-2 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
+      <div className="hidden lg:flex items-center gap-1.5 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
         <span className="text-xs font-medium text-slate-400 px-2 flex items-center gap-1">
-          <Layers className="w-3.5 h-3.5" /> Bố cục:
+          <FontAwesomeIcon icon={faLayerGroup} className="text-xs" /> Bố cục:
         </span>
 
         {/* 2x2 Grid */}
@@ -101,7 +119,7 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
           title="Lưới 2x2 (4 Màn hình chuẩn)"
         >
-          <Grid2X2 className="w-3.5 h-3.5" />
+          <FontAwesomeIcon icon={faTableCellsLarge} className="text-xs" />
           <span>Lưới 4</span>
         </button>
 
@@ -115,7 +133,7 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
           title="1 Quầy chính to + 3 Quầy phụ nhỏ"
         >
-          <Square className="w-3.5 h-3.5" />
+          <FontAwesomeIcon icon={faSquare} className="text-xs" />
           <span>1 To + 3 Phụ</span>
         </button>
 
@@ -129,7 +147,7 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
           title="Chia đôi 2 màn hình (1x2)"
         >
-          <Columns2 className="w-3.5 h-3.5" />
+          <FontAwesomeIcon icon={faTableColumns} className="text-xs" />
           <span>Lưới 2</span>
         </button>
 
@@ -143,7 +161,7 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
           title="Lưới 6 màn hình (2x3)"
         >
-          <LayoutGrid className="w-3.5 h-3.5" />
+          <FontAwesomeIcon icon={faTableCells} className="text-xs" />
           <span>Lưới 6</span>
         </button>
 
@@ -166,8 +184,21 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Right: Digital Clock, Actions & Fullscreen */}
-      <div className="flex items-center gap-2 sm:gap-3">
+      {/* Right: Sound, Clock, Actions & Fullscreen */}
+      <div className="flex items-center gap-2 sm:gap-2.5">
+        {/* Sound Chime Toggle */}
+        <button
+          onClick={onToggleSound}
+          className={`p-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition border ${
+            soundEnabled
+              ? 'bg-slate-900 border-slate-700 text-sky-400 hover:text-white'
+              : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-400'
+          }`}
+          title={soundEnabled ? 'Âm thanh cảnh báo: Đang BẬT' : 'Âm thanh cảnh báo: Đang TẮT'}
+        >
+          <FontAwesomeIcon icon={soundEnabled ? faBell : faBellSlash} className="text-xs" />
+        </button>
+
         {/* Real-time Clock */}
         <div className="hidden md:flex flex-col items-end px-2.5 py-1 bg-slate-900/80 rounded-lg border border-slate-800/80 font-mono">
           <span className="text-xs font-bold text-sky-400 tracking-wider">
@@ -188,35 +219,26 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
           title={carouselActive ? 'Tắt xoay vòng tự động' : 'Bật xoay vòng tự động chuyển quầy'}
         >
-          {carouselActive ? (
-            <>
-              <Pause className="w-3.5 h-3.5 animate-pulse" />
-              <span className="hidden sm:inline">Xoay vòng: Bật</span>
-            </>
-          ) : (
-            <>
-              <Play className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Xoay vòng</span>
-            </>
-          )}
+          <FontAwesomeIcon icon={carouselActive ? faPause : faPlay} className="text-xs" />
+          <span className="hidden sm:inline">{carouselActive ? 'Xoay vòng: Bật' : 'Xoay vòng'}</span>
         </button>
 
         {/* Refresh All */}
         <button
           onClick={onRefreshAll}
           className="p-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-lg border border-slate-800 transition"
-          title="Tải lại toàn bộ các màn hình (Ctrl+R)"
+          title="Tải lại toàn bộ các màn hình"
         >
-          <RefreshCw className="w-4 h-4" />
+          <FontAwesomeIcon icon={faRotate} className="text-xs" />
         </button>
 
-        {/* Manage Links */}
+        {/* Manage Links & Rules */}
         <button
           onClick={onOpenManage}
           className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-lg border border-slate-800 text-xs font-semibold flex items-center gap-1.5 transition"
-          title="Cài đặt & Danh sách Nhà thuốc"
+          title="Cấu hình Nhà thuốc & Ngưỡng điều phối"
         >
-          <Settings className="w-4 h-4" />
+          <FontAwesomeIcon icon={faSliders} className="text-xs" />
           <span className="hidden sm:inline">Cấu hình</span>
         </button>
 
@@ -226,11 +248,7 @@ export const Header: React.FC<HeaderProps> = ({
           className="p-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg shadow-sm transition"
           title={isFullscreen ? 'Thoát toàn màn hình (F11)' : 'Toàn màn hình TV (F11)'}
         >
-          {isFullscreen ? (
-            <Minimize className="w-4 h-4" />
-          ) : (
-            <Maximize className="w-4 h-4" />
-          )}
+          <FontAwesomeIcon icon={isFullscreen ? faCompress : faExpand} className="text-xs" />
         </button>
       </div>
     </header>
