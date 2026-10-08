@@ -309,13 +309,13 @@ export const ZaloSettingsTab: React.FC = () => {
               </div>
             </button>
 
-            {/* Option 2: Nhóm Zalo */}
+            {/* Option 2: Chọn Bạn bè hoặc Nhóm Zalo */}
             <div className="space-y-1">
               <select
-                value={config.targetType === 'group' ? config.targetId : ''}
+                value={`${config.targetType}:${config.targetId}`}
                 onChange={(e) => {
-                  const selectedId = e.target.value;
-                  if (!selectedId) {
+                  const val = e.target.value;
+                  if (!val || val === 'user:') {
                     handleConfigChange({
                       targetType: 'user',
                       targetId: '',
@@ -323,34 +323,56 @@ export const ZaloSettingsTab: React.FC = () => {
                     });
                     return;
                   }
-                  const grp = contacts?.groups.find((g) => g.id === selectedId);
-                  handleConfigChange({
-                    targetType: 'group',
-                    targetId: selectedId,
-                    targetName: grp ? grp.name : 'Nhóm Zalo',
-                  });
+                  const [tType, tId] = val.split(':');
+                  if (tType === 'group') {
+                    const grp = contacts?.groups.find((g) => g.id === tId);
+                    handleConfigChange({
+                      targetType: 'group',
+                      targetId: tId,
+                      targetName: grp ? `Nhóm: ${grp.name}` : 'Nhóm Zalo',
+                    });
+                  } else if (tType === 'user') {
+                    const friend = contacts?.friends.find((f) => f.id === tId);
+                    handleConfigChange({
+                      targetType: 'user',
+                      targetId: tId,
+                      targetName: friend ? friend.name : 'Người nhận cá nhân',
+                    });
+                  }
                 }}
                 className={`w-full p-2.5 rounded-xl border bg-slate-950 text-xs font-semibold outline-none transition ${
-                  config.targetType === 'group'
+                  config.targetId
                     ? 'border-sky-500 text-white ring-1 ring-sky-500/30'
                     : 'border-slate-800 text-slate-300'
                 }`}
               >
-                <option value="">-- Hoặc chọn gửi vào Nhóm Zalo CSKH --</option>
-                {contacts?.groups?.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    👥 {g.name}
-                  </option>
-                ))}
+                <option value="user:">📱 Cloud của tôi (Zalo cá nhân)</option>
+                {contacts?.friends && contacts.friends.length > 0 && (
+                  <optgroup label="Cá Nhân / Bạn Bè Zalo">
+                    {contacts.friends.map((f) => (
+                      <option key={f.id} value={`user:${f.id}`}>
+                        👤 {f.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {contacts?.groups && contacts.groups.length > 0 && (
+                  <optgroup label="Nhóm Zalo CSKH / Điều Phối">
+                    {contacts.groups.map((g) => (
+                      <option key={g.id} value={`group:${g.id}`}>
+                        👥 {g.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
               <p className="text-[10px] text-slate-400">
                 {isLoggedIn 
-                  ? (contacts?.groups?.length 
-                      ? `Tìm thấy ${contacts.groups.length} nhóm bạn đang tham gia` 
-                      : 'Đang tải danh sách nhóm Zalo...')
-                  : '💡 Sau khi quét QR đăng nhập Zalo ở Bước 1, danh sách nhóm của bạn sẽ hiện ra tại đây'}
+                  ? `Đã nạp ${contacts?.friends?.length || 0} người nhận và ${contacts?.groups?.length || 0} nhóm Zalo` 
+                  : '💡 Sau khi quét QR đăng nhập Zalo ở Bước 1, danh sách sẽ hiện ra tại đây'}
               </p>
             </div>
+
           </div>
 
           <div className="mt-2 text-xs text-sky-400 font-mono bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 flex items-center justify-between">

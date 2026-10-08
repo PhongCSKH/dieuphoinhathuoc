@@ -66,7 +66,12 @@ async function tryAutoLogin() {
     zaloInstance = new Zalo();
     zaloApi = await zaloInstance.login(credentials);
     
-    currentOwnId = await zaloApi.getOwnId().catch(() => null);
+    try {
+      currentOwnId = zaloApi.getOwnId();
+    } catch {
+      currentOwnId = null;
+    }
+
     try {
       const info = await zaloApi.fetchAccountInfo();
       currentUser = {
@@ -82,13 +87,13 @@ async function tryAutoLogin() {
     console.log(`[Zalo Service] Đăng nhập thành công! Tài khoản: ${currentUser.name} (ID: ${currentOwnId})`);
     return true;
   } catch (err) {
-    console.warn('[Zalo Service] Khôi phục session thất bại hoặc hết hạn:', err.message);
-    try { fs.unlinkSync(SESSION_FILE); } catch {}
+    console.warn('[Zalo Service] Khôi phục session thất bại:', err.message);
     zaloApi = null;
     currentUser = null;
     qrStatus = 'idle';
     return false;
   }
+
 }
 
 // Start QR login
@@ -135,7 +140,11 @@ async function startQRLogin() {
     });
 
     zaloApi = await apiPromise;
-    currentOwnId = await zaloApi.getOwnId().catch(() => null);
+    try {
+      currentOwnId = zaloApi.getOwnId();
+    } catch {
+      currentOwnId = null;
+    }
     try {
       const info = await zaloApi.fetchAccountInfo();
       currentUser = {
