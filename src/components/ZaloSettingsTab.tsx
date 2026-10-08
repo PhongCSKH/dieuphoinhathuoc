@@ -8,10 +8,11 @@ import {
   faRightFromBracket, 
   faPaperPlane, 
   faUser, 
-  faCloud,
-  faSliders,
+  faCloud, 
+  faSliders, 
   faCircleNotch,
-  faTriangleExclamation
+  faTriangleExclamation,
+  faPlus
 } from '@fortawesome/free-solid-svg-icons';
 import { ZaloStatus, ZaloAlertConfig, ZaloContact } from '../types';
 import { 
@@ -27,8 +28,13 @@ export const ZaloSettingsTab: React.FC = () => {
   const [status, setStatus] = useState<ZaloStatus | null>(null);
   const [contacts, setContacts] = useState<{ self: ZaloContact; groups: ZaloContact[]; friends: ZaloContact[] } | null>(null);
   const [isLoadingQR, setIsLoadingQR] = useState(false);
+  const [isLoadingContacts, setIsLoadingContacts] = useState(false);
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [showManualGroupInput, setShowManualGroupInput] = useState(false);
+  const [manualGroupId, setManualGroupId] = useState('');
+  const [manualGroupName, setManualGroupName] = useState('');
+
   const [config, setConfig] = useState<ZaloAlertConfig>({
     enabled: true,
     targetType: 'user',
@@ -37,7 +43,7 @@ export const ZaloSettingsTab: React.FC = () => {
     cooldownMinutes: 3,
   });
 
-  // Poll status periodically while component is mounted
+  // Fetch status and refresh contacts
   useEffect(() => {
     let isMounted = true;
     const checkStatus = async () => {
@@ -47,19 +53,26 @@ export const ZaloSettingsTab: React.FC = () => {
       if (s?.config) {
         setConfig(s.config);
       }
-      if (s?.loggedIn && !contacts) {
+      if (s?.loggedIn) {
         const c = await fetchZaloContacts();
-        if (isMounted) setContacts(c);
+        if (isMounted && c) setContacts(c);
       }
     };
 
     checkStatus();
-    const interval = setInterval(checkStatus, 3000);
+    const interval = setInterval(checkStatus, 4000);
     return () => {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [contacts]);
+  }, []);
+
+  const handleReloadContacts = async () => {
+    setIsLoadingContacts(true);
+    const c = await fetchZaloContacts();
+    if (c) setContacts(c);
+    setIsLoadingContacts(false);
+  };
 
   const handleGenerateQR = async () => {
     setIsLoadingQR(true);
@@ -84,6 +97,23 @@ export const ZaloSettingsTab: React.FC = () => {
     const updated = { ...config, ...newConfig };
     setConfig(updated);
     await updateZaloConfig(newConfig);
+  };
+
+  const handleSaveManualGroup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualGroupId.trim()) {
+      alert('Vui lòng nhập ID nhóm Zalo (hoặc số ID số/chữ của nhóm)');
+      return;
+    }
+    const name = manualGroupName.trim() || `Nhóm ID: ${manualGroupId.trim()}`;
+    await handleConfigChange({
+      targetType: 'group',
+      targetId: manualGroupId.trim(),
+      targetName: name,
+    });
+    setShowManualGroupInput(false);
+    setManualGroupId('');
+    setManualGroupName('');
   };
 
   const handleSendTest = async () => {
@@ -121,7 +151,7 @@ export const ZaloSettingsTab: React.FC = () => {
             </h4>
             <p className="text-xs opacity-80 mt-0.5">
               {isBridgeOnline 
-                ? 'Cổng nội bộ máy tính 5050 - Sẵn sàng gửi tin nhắn trực tiếp qua Zalo cá nhân' 
+                ? 'Cổng nội bộ máy tính 5050 - Sẵn sàng gửi tin nhắn trực tiếp qua Zalo cá nhân / nhóm' 
                 : 'Vui lòng chạy file Mo_Dieu_Phoi_Nha_Thuoc.bat hoặc Khoi_Dong_Zalo_Bridge.bat trên Desktop.'}
             </p>
           </div>
@@ -250,7 +280,7 @@ export const ZaloSettingsTab: React.FC = () => {
         )}
       </div>
 
-      {/* 3. KHỐI 2: CẤU HÌNH NHẬN CẢNH BÁO & NÚT GỬI THỬ NGHIỆM (LUÔN LUÔN HIỂN THỊ) */}
+      {/* 3. KHỐI 2: CẤU HÌNH NHẬN CẢNH BÁO & NÚT GỬI THỬ NGHIỆM */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <h4 className="text-xs font-bold text-sky-400 uppercase tracking-wider flex items-center gap-2">
@@ -279,11 +309,34 @@ export const ZaloSettingsTab: React.FC = () => {
           </label>
         </div>
 
-        {/* Target Destination: Self vs Group */}
-        <div className="space-y-2 py-2 border-b border-slate-800">
-          <label className="text-xs font-semibold text-slate-200 block">
-            Nơi nhận tin nhắn cảnh báo (Chọn Cá Nhân hoặc Nhóm Zalo):
-          </label>
+        {/* Target Destination: Self vs Friends vs Group */}
+        <div className="space-y-3 py-2 border-b border-slate-800">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-semibold text-slate-200 block">
+              Nơi nhận tin nhắn cảnh báo (Chọn Cá Nhân hoặc Nhóm Zalo):
+            </label>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleReloadContacts}
+                disabled={isLoadingContacts}
+                className="text-[11px] text-sky-400 hover:text-sky-300 font-semibold flex items-center gap-1 transition"
+                title="Làm mới lại danh sách nhóm và bạn bè từ Zalo"
+              >
+                <FontAwesomeIcon icon={faRotate} className={isLoadingContacts ? 'animate-spin' : ''} />
+                <span>Làm mới danh sách nhóm</span>
+              </button>
+              <span className="text-slate-600">|</span>
+              <button
+                type="button"
+                onClick={() => setShowManualGroupInput(!showManualGroupInput)}
+                className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1 transition"
+              >
+                <FontAwesomeIcon icon={faPlus} />
+                <span>{showManualGroupInput ? 'Ẩn nhập ID nhóm' : 'Nhập ID nhóm thủ công'}</span>
+              </button>
+            </div>
+          </div>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Option 1: Cloud của tôi */}
@@ -329,7 +382,7 @@ export const ZaloSettingsTab: React.FC = () => {
                     handleConfigChange({
                       targetType: 'group',
                       targetId: tId,
-                      targetName: grp ? `Nhóm: ${grp.name}` : 'Nhóm Zalo',
+                      targetName: grp ? `Nhóm: ${grp.name}` : `Nhóm ${tId}`,
                     });
                   } else if (tType === 'user') {
                     const friend = contacts?.friends.find((f) => f.id === tId);
@@ -368,17 +421,57 @@ export const ZaloSettingsTab: React.FC = () => {
               </select>
               <p className="text-[10px] text-slate-400">
                 {isLoggedIn 
-                  ? `Đã nạp ${contacts?.friends?.length || 0} người nhận và ${contacts?.groups?.length || 0} nhóm Zalo` 
+                  ? `Đã nạp ${contacts?.friends?.length || 0} người nhận và ${contacts?.groups?.length || 0} nhóm Zalo (Bấm "Làm mới danh sách nhóm" nếu vừa được thêm vào nhóm mới)` 
                   : '💡 Sau khi quét QR đăng nhập Zalo ở Bước 1, danh sách sẽ hiện ra tại đây'}
               </p>
             </div>
-
           </div>
+
+          {/* Form Nhập Nhóm Thủ Công Nếu Cần */}
+          {showManualGroupInput && (
+            <form onSubmit={handleSaveManualGroup} className="p-3 bg-slate-950 border border-amber-500/40 rounded-xl space-y-2 animate-in fade-in duration-150">
+              <div className="flex items-center justify-between text-xs font-bold text-amber-300">
+                <span>Nhập ID Nhóm Zalo Trực Tiếp:</span>
+                <span className="text-[10px] font-normal text-slate-400">(Dành cho nhóm mới tạo hoặc nhóm nội bộ)</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  placeholder="ID Nhóm (ví dụ: 1234567890 hoặc mã số nhóm)"
+                  value={manualGroupId}
+                  onChange={(e) => setManualGroupId(e.target.value)}
+                  className="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 outline-none focus:border-amber-400"
+                />
+                <input
+                  type="text"
+                  placeholder="Tên nhóm hiển thị (ví dụ: Tổ CSKH Điều Phối)"
+                  value={manualGroupName}
+                  onChange={(e) => setManualGroupName(e.target.value)}
+                  className="px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 outline-none focus:border-amber-400"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowManualGroupInput(false)}
+                  className="px-3 py-1 text-xs text-slate-400 hover:text-white rounded-lg transition"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition"
+                >
+                  Lưu & Chọn nhóm này
+                </button>
+              </div>
+            </form>
+          )}
 
           <div className="mt-2 text-xs text-sky-400 font-mono bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 flex items-center justify-between">
             <span>Đang thiết lập gửi đến: <strong>{config.targetName}</strong></span>
             <span className="text-[11px] text-slate-400 font-sans">
-              Loại: {config.targetType === 'group' ? 'Nhóm Zalo' : 'Cá nhân'}
+              Loại: {config.targetType === 'group' ? 'Nhóm Zalo' : 'Cá nhân'} {config.targetId ? `(ID: ${config.targetId})` : ''}
             </span>
           </div>
         </div>

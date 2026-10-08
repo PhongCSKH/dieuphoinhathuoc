@@ -242,22 +242,36 @@ app.get('/api/contacts', async (req, res) => {
   }
 
   try {
-    const groupsRaw = await zaloApi.getAllGroups().catch(() => ({ data: [] }));
+    let groups = [];
+    try {
+      const groupsRaw = await zaloApi.getAllGroups();
+      const groupIds = Object.keys(groupsRaw?.gridVerMap || {});
+      console.log('[Zalo Service] Tìm thấy danh sách Group IDs:', groupIds);
+      if (groupIds.length > 0) {
+        const infoResp = await zaloApi.getGroupInfo(groupIds);
+        const infoMap = infoResp?.gridInfoMap || {};
+        groups = groupIds.map((gid) => {
+          const g = infoMap[gid] || {};
+          return {
+            id: gid,
+            name: g.name || `Nhóm ${gid}`,
+            avatar: g.avt || g.avatar || '',
+            type: 'group',
+          };
+        });
+      }
+    } catch (gErr) {
+      console.error('[Zalo Service] Lỗi khi lấy danh sách nhóm:', gErr.message);
+    }
+
     const friendsRaw = await zaloApi.getAllFriends().catch(() => ({ data: [] }));
-
-    const groups = (Array.isArray(groupsRaw) ? groupsRaw : groupsRaw?.data || []).map((g) => ({
-      id: g.groupId || g.id,
-      name: g.groupName || g.name || 'Nhóm không tên',
-      avatar: g.groupAvatar || g.avatar || '',
-      type: 'group',
-    }));
-
     const friends = (Array.isArray(friendsRaw) ? friendsRaw : friendsRaw?.data || []).map((f) => ({
       id: f.userId || f.id,
       name: f.displayName || f.name || 'Bạn bè',
       avatar: f.avatar || '',
       type: 'user',
     }));
+
 
     res.json({
       self: {
