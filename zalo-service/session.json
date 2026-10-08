@@ -1,0 +1,133 @@
+{
+  "cookie": [
+    {
+      "key": "nl_b04af40bb0e193acf8a9877592394ada",
+      "value": "tzaoLC8i6lt4qZTLooiP_SNMDq_OTtYubD4L13enVG",
+      "maxAge": 5,
+      "domain": "id.zalo.me",
+      "path": "/",
+      "secure": true,
+      "httpOnly": true,
+      "hostOnly": false,
+      "creation": "2026-10-08T11:57:56.078Z",
+      "lastAccessed": "2026-10-08T11:57:58.534Z",
+      "sameSite": "lax"
+    },
+    {
+      "key": "zpdid",
+      "value": "417vbrRygJaN6f6MLVR7F1OJbfLLzyCp",
+      "maxAge": 157680000,
+      "domain": "id.zalo.me",
+      "path": "/",
+      "secure": true,
+      "httpOnly": true,
+      "hostOnly": false,
+      "creation": "2026-10-08T11:57:56.079Z",
+      "lastAccessed": "2026-10-08T11:57:58.534Z",
+      "sameSite": "lax"
+    },
+    {
+      "key": "zlogin_session",
+      "value": "kW4JGLyjCnIxFnDDLXTbH-Tj24PJ5cn0v6qKKWrGObYlB0TR0L1bMgyb0aGUN61MVG",
+      "maxAge": 3600,
+      "domain": "id.zalo.me",
+      "path": "/",
+      "secure": true,
+      "httpOnly": true,
+      "hostOnly": false,
+      "creation": "2026-10-08T11:57:56.080Z",
+      "lastAccessed": "2026-10-08T11:57:58.534Z",
+      "sameSite": "lax"
+    },
+    {
+      "key": "_zlang",
+      "value": "vn",
+      "expires": "2026-10-09T11:57:59.000Z",
+      "maxAge": 86400,
+      "domain": "zalo.me",
+      "path": "/",
+      "secure": true,
+      "hostOnly": false,
+      "creation": "2026-10-08T11:57:56.081Z",
+      "lastAccessed": "2026-10-08T11:57:59.142Z"
+    },
+    {
+      "key": "zpsid",
+      "value": "Xvdu.465800866.1.UrZ7_pkcPkoPAANtDwPcx4xL5DWDarxS2vvGsae7DNxZsJELEkFZAr6cPkm",
+      "maxAge": 31536000,
+      "domain": "zalo.me",
+      "path": "/",
+      "secure": true,
+      "httpOnly": true,
+      "hostOnly": false,
+      "creation": "2026-10-08T11:57:58.528Z",
+      "lastAccessed": "2026-10-08T11:57:59.118Z",
+      "sameSite": "none"
+    },
+    {
+      "key": "__zi",
+      "value": "3000.QOBlzDCV2uGerkFzm0LGr6pIvV3E0npTRTsezSyA6zvZsAdt.1",
+      "maxAge": 63072000,
+      "domain": "zalo.me",
+      "path": "/",
+      "secure": true,
+      "hostOnly": false,
+      "creation": "2026-10-08T11:57:58.529Z",
+      "lastAccessed": "2026-10-08T11:57:59.118Z",
+      "sameSite": "none"
+    },
+    {
+      "key": "zlogtype",
+      "value": "EXPIRED",
+      "expires": "1970-01-01T00:00:00.000Z",
+      "maxAge": 0,
+      "domain": "id.zalo.me",
+      "path": "/",
+      "secure": true,
+      "httpOnly": true,
+      "hostOnly": false,
+      "creation": "2026-10-08T11:57:58.529Z",
+      "lastAccessed": "2026-10-08T11:57:58.553Z"
+    },
+    {
+      "key": "zpsid",
+      "value": "eMKnVcAlVqAZUYmFMRPs6TKuVazFid0KspvWHbVHB7_2D69t0zutU_4bI5Odsm5bvXaBVWYMSKhkJJrH7yLrHFeCAa9lybfPbpikVtd4Urg1FpSFGDLY0G",
+      "maxAge": 31536000,
+      "domain": "zaloapp.com",
+      "path": "/",
+      "secure": true,
+      "httpOnly": true,
+      "hostOnly": false,
+      "creation": "2026-10-08T11:57:58.966Z",
+      "lastAccessed": "2026-10-08T11:57:58.966Z",
+      "sameSite": "none"
+    },
+    {
+      "key": "__zi",
+      "value": "3000.QOBlzDCV2uGerkFzm0LGr6pIvV3E0npTRTsezSyA6zvZsw_r.1",
+      "maxAge": 63072000,
+      "domain": "zaloapp.com",
+      "path": "/",
+      "secure": true,
+      "hostOnly": false,
+      "creation": "2026-10-08T11:57:58.966Z",
+      "lastAccessed": "2026-10-08T11:57:58.966Z",
+      "sameSite": "none"
+    },
+    {
+      "key": "zpw_sek",
+      "value": "cZip.465800866.a0.QfnGkFkcmNruqqGG-rs72w5_uc3uPwLoa1l498aNjNliQRvxWp_oPhKCuqcBOBeff_Pd--E5-5wZNC6E7JU72m",
+      "maxAge": 7776000,
+      "domain": "chat.zalo.me",
+      "path": "/",
+      "secure": true,
+      "httpOnly": true,
+      "hostOnly": false,
+      "creation": "2026-10-08T11:57:59.017Z",
+      "lastAccessed": "2026-10-08T11:57:59.118Z",
+      "sameSite": "lax"
+    }
+  ],
+  "imei": "16a5769d-3085-426f-abf0-13ee9ceb1566-a69b52f9d7f760edf3fd052bcda2542f",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0"
+}
