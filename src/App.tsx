@@ -17,6 +17,21 @@ import {
 } from './utils/zalo';
 
 export const App: React.FC = () => {
+  // Set custom favicon
+  useEffect(() => {
+    const setFaviconUrl = (url: string) => {
+      let link: HTMLLinkElement | null = document.querySelector("link[rel*='icon']");
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.getElementsByTagName('head')[0].appendChild(link);
+      }
+      link.type = 'image/png';
+      link.href = url;
+    };
+    setFaviconUrl('https://iili.io/F66acRs.png');
+  }, []);
+
   // 1. Pharmacies state
   const [pharmacies, setPharmacies] = useState<PharmacyScreen[]>(() => {
     try {
