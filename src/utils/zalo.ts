@@ -83,9 +83,23 @@ export async function triggerTestZalo(): Promise<{ success: boolean; message: st
   }
 }
 
+export interface ZaloStyleItem {
+  start: number;
+  len: number;
+  st: string;
+}
+
+export interface ZaloFormattedMessage {
+  text: string;
+  styles: ZaloStyleItem[];
+  urgency: number; // 0 = Default, 1 = Important, 2 = Urgent
+}
+
 export async function dispatchZaloAlert(params: {
   alertKey: string;
   message: string;
+  styles?: ZaloStyleItem[];
+  urgency?: number;
   isResolved?: boolean;
   forceSend?: boolean;
 }): Promise<{ success: boolean; skipped?: boolean; reason?: string }> {
@@ -105,59 +119,173 @@ export async function dispatchZaloAlert(params: {
   }
 }
 
+// Helper sinh Rich Text Style cho dòng tiêu đề
+function makeTitleStyle(title: string, colorCode: string = 'c_db342e'): ZaloStyleItem[] {
+  return [
+    { start: 0, len: title.length, st: 'b' }, // In đậm
+    { start: 0, len: title.length, st: colorCode }, // Đổi màu
+    { start: 0, len: title.length, st: 'f_18' }, // Chữ lớn
+  ];
+}
+
 /**
- * Tạo nội dung tin nhắn cảnh báo định dạng Zalo chuẩn chuyên nghiệp
+ * 1. CẢNH BÁO ĐÔNG (QUÁ TẢI)
+ * Màu Đỏ Khẩn Cấp, In Đậm
  */
 export function formatZaloOverloadAlert(params: {
   pharmacyName: string;
   waitingCount: number;
   activeCounters: string[];
-  ratio: number;
   threshold: number;
-}): string {
+}): ZaloFormattedMessage {
   const timeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  const dateStr = new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const title = `[CẢNH BÁO ĐÔNG - ${params.pharmacyName.toUpperCase()}]`;
   const counterStr = params.activeCounters.length > 0 
     ? `${params.activeCounters.length} quầy (Quầy ${params.activeCounters.join(', ')})`
     : '0 quầy (Chưa mở quầy!)';
+  const neededCounters = Math.max(1, Math.ceil(params.waitingCount / params.threshold) - params.activeCounters.length);
 
-  return `🚨 [CẢNH BÁO QUÁ TẢI NHÀ THUỐC]\n` +
-    `📍 Khu vực: ${params.pharmacyName}\n` +
-    `⚠️ Tình trạng: Quá tải khách chờ nhận thuốc!\n` +
-    `👥 Số khách đang chờ: ${params.waitingCount} người\n` +
-    `🚪 Số quầy đang phục vụ: ${counterStr}\n` +
-    `📊 Tỷ lệ phục vụ: ${params.ratio.toFixed(1)} khách/quầy (Ngưỡng cho phép: ${params.threshold})\n` +
-    `👉 Đề xuất CSKH: Đề nghị điều phối mở thêm quầy hoặc cử nhân viên hỗ trợ lấy thuốc!\n` +
-    `⏰ Thời gian: ${timeStr} - ${dateStr}`;
+  const text = `${title}\n` +
+    `• Khách chờ: ${params.waitingCount} người\n` +
+    `• Đang phục vụ: ${counterStr}\n` +
+    `→ Đề xuất: Mở thêm tối thiểu ${neededCounters} quầy\n` +
+    `• Thời gian: ${timeStr}`;
+
+  return {
+    text,
+    styles: makeTitleStyle(title, 'c_db342e'), // Đỏ khẩn cấp
+    urgency: 2, // Khẩn cấp
+  };
 }
 
+/**
+ * 2. TĂNG CƯỜNG QUẦY (ĐÃ MỞ THÊM QUẦY KỂ TỪ LÚC CẢNH BÁO)
+ * Màu Xanh Lá, In Đậm
+ */
+export function formatZaloReinforcedAlert(params: {
+  pharmacyName: string;
+  addedCounters: string[];
+  totalCounters: number;
+  initialCounterCount: number;
+  waitingCount: number;
+}): ZaloFormattedMessage {
+  const timeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const title = `[TĂNG CƯỜNG QUẦY - ${params.pharmacyName.toUpperCase()}]`;
+
+  const text = `${title}\n` +
+    `• Tăng cường: +${params.addedCounters.length} quầy (Mở thêm Quầy ${params.addedCounters.join(', ')})\n` +
+    `• Tổng quầy phục vụ: ${params.totalCounters} quầy (ban đầu ${params.initialCounterCount} quầy)\n` +
+    `• Khách chờ hiện tại: ${params.waitingCount} người (Đang giảm)\n` +
+    `• Thời gian: ${timeStr}`;
+
+  return {
+    text,
+    styles: makeTitleStyle(title, 'c_15a85f'), // Xanh lá
+    urgency: 2,
+  };
+}
+
+/**
+ * 3. HẠ TẢI - ĐÃ ỔN ĐỊNH
+ * Màu Xanh Lá, In Đậm
+ */
+export function formatZaloResolvedAlert(params: {
+  pharmacyName: string;
+  waitingCount: number;
+  activeCountersCount: number;
+}): ZaloFormattedMessage {
+  const timeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const title = `[HẠ TẢI ỔN ĐỊNH - ${params.pharmacyName.toUpperCase()}]`;
+
+  const text = `${title}\n` +
+    `• Khách chờ còn: ${params.waitingCount} người (Đã an toàn)\n` +
+    `• Quầy hoạt động: ${params.activeCountersCount} quầy\n` +
+    `✔ Trạng thái: Bình thường, đã giải tỏa xong\n` +
+    `• Thời gian: ${timeStr}`;
+
+  return {
+    text,
+    styles: makeTitleStyle(title, 'c_15a85f'), // Xanh lá
+    urgency: 0,
+  };
+}
+
+/**
+ * 4. LỆCH TẢI NT1 VÀ NT2
+ * Màu Cam, In Đậm
+ */
 export function formatZaloImbalanceAlert(params: {
   nt1Waiting: number;
   nt2Waiting: number;
   diff: number;
   threshold: number;
-}): string {
+}): ZaloFormattedMessage {
   const timeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  const dateStr = new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  const higher = params.nt1Waiting > params.nt2Waiting ? 'Nhà Thuốc 1' : 'Nhà Thuốc 2';
+  const title = `[LỆCH TẢI - NHÀ THUỐC 1 & 2]`;
+  const isNt1Higher = params.nt1Waiting > params.nt2Waiting;
+  const heavierName = isNt1Higher ? 'Nhà Thuốc 1' : 'Nhà Thuốc 2';
+  const lighterName = isNt1Higher ? 'Nhà Thuốc 2' : 'Nhà Thuốc 1';
+  const heavierCount = Math.max(params.nt1Waiting, params.nt2Waiting);
+  const lighterCount = Math.min(params.nt1Waiting, params.nt2Waiting);
 
-  return `⚖️ [CẢNH BÁO LỆCH TẢI NHÀ THUỐC]\n` +
-    `⚠️ Phát hiện mất cân đối giữa Nhà Thuốc 1 & Nhà Thuốc 2:\n` +
-    `🔴 Nhà Thuốc 1: ${params.nt1Waiting} khách chờ\n` +
-    `🔵 Nhà Thuốc 2: ${params.nt2Waiting} khách chờ\n` +
-    `📈 Độ chênh lệch: ${params.diff} khách (Ngưỡng cảnh báo: ${params.threshold})\n` +
-    `👉 Đề xuất CSKH: Hướng dẫn khách hàng di chuyển bớt sang quầy ít tải hơn để giảm ứ đọng tại ${higher}!\n` +
-    `⏰ Thời gian: ${timeStr} - ${dateStr}`;
+  const text = `${title}\n` +
+    `• ${heavierName}: ${heavierCount} khách chờ (Đông hơn)\n` +
+    `• ${lighterName}: ${lighterCount} khách chờ\n` +
+    `• Chênh lệch: ${params.diff} khách\n` +
+    `→ Đề xuất: Điều phối khách sang ${lighterName}\n` +
+    `• Thời gian: ${timeStr}`;
+
+  return {
+    text,
+    styles: makeTitleStyle(title, 'c_f27806'), // Màu Cam
+    urgency: 1, // Cảnh báo
+  };
 }
 
-export function formatZaloResolvedAlert(params: {
+/**
+ * 5. CHƯA CÓ QUẦY MỞ (0 QUẦY)
+ * Màu Đỏ Khẩn Cấp
+ */
+export function formatZaloNoCounterAlert(params: {
   pharmacyName: string;
   waitingCount: number;
-  activeCountersCount: number;
-}): string {
+}): ZaloFormattedMessage {
   const timeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  return `✅ [HẠ TẢI - ĐÃ ỔN ĐỊNH]\n` +
-    `📍 Khu vực: ${params.pharmacyName}\n` +
-    `🟢 Lượng khách chờ đã giảm về mức an toàn: ${params.waitingCount} khách (${params.activeCountersCount} quầy đang mở).\n` +
-    `⏰ Thời gian: ${timeStr}`;
+  const title = `[CHƯA CÓ QUẦY MỞ - ${params.pharmacyName.toUpperCase()}]`;
+
+  const text = `${title}\n` +
+    `• Khách đang đợi: ${params.waitingCount} người\n` +
+    `• Quầy hoạt động: 0 quầy (Chưa mở quầy!)\n` +
+    `→ Đề xuất: Mở quầy gấp\n` +
+    `• Thời gian: ${timeStr}`;
+
+  return {
+    text,
+    styles: makeTitleStyle(title, 'c_db342e'), // Đỏ khẩn cấp
+    urgency: 2, // Khẩn cấp
+  };
+}
+
+/**
+ * 6. VÃN KHÁCH HOÀN TOÀN (BỎ DÒNG ĐỀ XUẤT THEO YÊU CẦU)
+ * Màu Xanh Lam, In Đậm
+ */
+export function formatZaloLowTrafficAlert(params: {
+  pharmacyName: string;
+  waitingCount: number;
+  counterCount: number;
+}): ZaloFormattedMessage {
+  const timeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const title = `[VÃN KHÁCH - ${params.pharmacyName.toUpperCase()}]`;
+
+  const text = `${title}\n` +
+    `• Khách chờ: ${params.waitingCount} người / ${params.counterCount} quầy mở\n` +
+    `✔ Tình hình: Đã vãn khách hoàn toàn\n` +
+    `• Thời gian: ${timeStr}`;
+
+  return {
+    text,
+    styles: makeTitleStyle(title, 'c_15a85f'), // Xanh lá
+    urgency: 0,
+  };
 }

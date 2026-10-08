@@ -13,7 +13,11 @@ import { soundManager } from './utils/audio';
 import { 
   dispatchZaloAlert, 
   formatZaloOverloadAlert, 
-  formatZaloImbalanceAlert 
+  formatZaloReinforcedAlert,
+  formatZaloResolvedAlert,
+  formatZaloImbalanceAlert,
+  formatZaloNoCounterAlert,
+  formatZaloLowTrafficAlert,
 } from './utils/zalo';
 
 export const App: React.FC = () => {
@@ -48,6 +52,8 @@ export const App: React.FC = () => {
 
   // Previous pharmacies ref for diffing events
   const prevPharmaciesRef = useRef<PharmacyScreen[]>(pharmacies);
+  // Track pharmacies with active overload to notify when resolved
+  const prevOverloadedPhsRef = useRef<Set<string>>(new Set());
 
   // 2. Rules state
   const [rules, setRules] = useState<DispatchRules>(() => {
@@ -202,7 +208,8 @@ export const App: React.FC = () => {
                 if (
                   p.stats?.waitingCount !== newStats.waitingCount ||
                   p.stats?.servingCount !== newStats.servingCount ||
-                  p.stats?.activeCounters.length !== newStats.activeCounters.length
+                  p.stats?.activeCounters.length !== newStats.activeCounters.length ||
+                  p.stats?.activeCounters.join(',') !== newStats.activeCounters.join(',')
                 ) {
                   hasChanges = true;
                 }
@@ -231,35 +238,111 @@ export const App: React.FC = () => {
           soundManager.play(soundType);
         }
 
-        // Tự động chuyển tiếp cảnh báo khẩn đến Zalo cá nhân / nhóm
+        // Tự động chuyển tiếp cảnh báo đến Zalo cá nhân / nhóm với Rich Text Style & Màu Sắc
         for (const alert of newAlerts) {
-          if (alert.severity === 'danger' || alert.severity === 'warning') {
-            let msg = '';
-            if (alert.type === 'overload' || alert.type === 'no_counter') {
-              const ph = updatedList.find((p) => p.id === alert.pharmacyId);
-              msg = formatZaloOverloadAlert({
-                pharmacyName: alert.pharmacyName || ph?.name || 'Nhà thuốc',
-                waitingCount: ph?.stats?.waitingCount || 0,
-                activeCounters: ph?.stats?.activeCounters || [],
-                ratio: (ph?.stats?.waitingCount || 0) / Math.max(1, ph?.stats?.activeCounters.length || 1),
-                threshold: rules.maxWaitingPerCounter,
-              });
-            } else if (alert.type === 'imbalance') {
-              const nt1 = updatedList.find((p) => p.code === 'NT1') || updatedList[0];
-              const nt2 = updatedList.find((p) => p.code === 'NT2') || updatedList[1];
-              const w1 = nt1?.stats?.waitingCount || 0;
-              const w2 = nt2?.stats?.waitingCount || 0;
-              msg = formatZaloImbalanceAlert({
-                nt1Waiting: w1,
-                nt2Waiting: w2,
-                diff: Math.abs(w1 - w2),
-                threshold: rules.maxImbalanceNT1NT2,
-              });
+          if (alert.type === 'overload') {
+            const ph = updatedList.find((p) => p.id === alert.pharmacyId);
+            const formatted = formatZaloOverloadAlert({
+              pharmacyName: alert.pharmacyName || ph?.name || 'Nhà thuốc',
+              waitingCount: alert.metadata?.waitingCount ?? (ph?.stats?.waitingCount || 0),
+              activeCounters: ph?.stats?.activeCounters || [],
+              threshold: rules.maxWaitingPerCounter,
+            });
+            dispatchZaloAlert({
+              alertKey: alert.id,
+              message: formatted.text,
+              styles: formatted.styles,
+              urgency: formatted.urgency,
+            });
+            if (alert.pharmacyId) {
+              prevOverloadedPhsRef.current.add(alert.pharmacyId);
             }
+          } else if (alert.type === 'reinforced') {
+            const ph = updatedList.find((p) => p.id === alert.pharmacyId);
+            const formatted = formatZaloReinforcedAlert({
+              pharmacyName: alert.pharmacyName || ph?.name || 'Nhà thuốc',
+              addedCounters: alert.metadata?.addedCounters || [],
+              totalCounters: alert.metadata?.totalCounters || ph?.stats?.activeCounters.length || 0,
+              initialCounterCount: alert.metadata?.initialCounterCount || 0,
+              waitingCount: alert.metadata?.waitingCount ?? (ph?.stats?.waitingCount || 0),
+            });
+            dispatchZaloAlert({
+              alertKey: alert.id,
+              message: formatted.text,
+              styles: formatted.styles,
+              urgency: formatted.urgency,
+              forceSend: true,
+            });
+          } else if (alert.type === 'no_counter') {
+            const ph = updatedList.find((p) => p.id === alert.pharmacyId);
+            const formatted = formatZaloNoCounterAlert({
+              pharmacyName: alert.pharmacyName || ph?.name || 'Nhà thuốc',
+              waitingCount: alert.metadata?.waitingCount ?? (ph?.stats?.waitingCount || 0),
+            });
+            dispatchZaloAlert({
+              alertKey: alert.id,
+              message: formatted.text,
+              styles: formatted.styles,
+              urgency: formatted.urgency,
+            });
+            if (alert.pharmacyId) {
+              prevOverloadedPhsRef.current.add(alert.pharmacyId);
+            }
+          } else if (alert.type === 'imbalance') {
+            const nt1 = updatedList.find((p) => p.code === 'NT1') || updatedList[0];
+            const nt2 = updatedList.find((p) => p.code === 'NT2') || updatedList[1];
+            const w1 = nt1?.stats?.waitingCount || 0;
+            const w2 = nt2?.stats?.waitingCount || 0;
+            const formatted = formatZaloImbalanceAlert({
+              nt1Waiting: w1,
+              nt2Waiting: w2,
+              diff: Math.abs(w1 - w2),
+              threshold: rules.maxImbalanceNT1NT2,
+            });
+            dispatchZaloAlert({
+              alertKey: alert.id,
+              message: formatted.text,
+              styles: formatted.styles,
+              urgency: formatted.urgency,
+            });
+          } else if (alert.type === 'low_traffic') {
+            const ph = updatedList.find((p) => p.id === alert.pharmacyId);
+            const formatted = formatZaloLowTrafficAlert({
+              pharmacyName: alert.pharmacyName || ph?.name || 'Nhà thuốc',
+              waitingCount: alert.metadata?.waitingCount ?? (ph?.stats?.waitingCount || 0),
+              counterCount: alert.metadata?.totalCounters ?? (ph?.stats?.activeCounters.length || 0),
+            });
+            dispatchZaloAlert({
+              alertKey: alert.id,
+              message: formatted.text,
+              styles: formatted.styles,
+              urgency: formatted.urgency,
+            });
+          }
+        }
 
-            if (msg) {
-              dispatchZaloAlert({ alertKey: alert.id, message: msg });
+        // Tự động thông báo khi nhà thuốc đã hạ tải và ổn định an toàn trở lại
+        for (const pharmacyId of Array.from(prevOverloadedPhsRef.current)) {
+          const isStillOverloaded = newAlerts.some(
+            (a) => a.pharmacyId === pharmacyId && (a.type === 'overload' || a.type === 'no_counter')
+          );
+          if (!isStillOverloaded) {
+            const ph = updatedList.find((p) => p.id === pharmacyId);
+            if (ph) {
+              const formatted = formatZaloResolvedAlert({
+                pharmacyName: ph.name,
+                waitingCount: ph.stats?.waitingCount || 0,
+                activeCountersCount: ph.stats?.activeCounters.length || 0,
+              });
+              dispatchZaloAlert({
+                alertKey: `resolved-${pharmacyId}`,
+                message: formatted.text,
+                styles: formatted.styles,
+                urgency: formatted.urgency,
+                isResolved: true,
+              });
             }
+            prevOverloadedPhsRef.current.delete(pharmacyId);
           }
         }
 

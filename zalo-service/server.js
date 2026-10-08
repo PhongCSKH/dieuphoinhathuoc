@@ -289,7 +289,7 @@ app.get('/api/contacts', async (req, res) => {
 });
 
 // Helper to send message
-async function executeSendMessage(text, targetType, targetId) {
+async function executeSendMessage(text, targetType, targetId, styles = [], urgency = 2) {
   if (!zaloApi) {
     throw new Error('Chưa đăng nhập Zalo');
   }
@@ -300,13 +300,18 @@ async function executeSendMessage(text, targetType, targetId) {
   }
 
   const threadType = targetType === 'group' ? ThreadType.Group : ThreadType.User;
-  console.log(`[Zalo Service] Đang gửi tin đến: ${destinationId} (Loại: ${targetType})...`);
+  console.log(`[Zalo Service] Đang gửi tin đến: ${destinationId} (Loại: ${targetType}, Styles: ${styles?.length || 0})...`);
   
+  const payload = {
+    msg: text,
+    urgency,
+  };
+  if (Array.isArray(styles) && styles.length > 0) {
+    payload.styles = styles;
+  }
+
   const result = await zaloApi.sendMessage(
-    {
-      msg: text,
-      urgency: 2, // Urgent priority
-    },
+    payload,
     destinationId,
     threadType
   );
@@ -324,10 +329,11 @@ app.post('/api/send-alert', async (req, res) => {
     return res.status(401).json({ error: 'Chưa đăng nhập Zalo trên máy tính' });
   }
 
-  const { alertKey, message, isResolved = false, forceSend = false } = req.body;
+  const { alertKey, message, styles = [], urgency = 2, isResolved = false, forceSend = false } = req.body;
   if (!message) {
     return res.status(400).json({ error: 'Thiếu nội dung tin nhắn cảnh báo' });
   }
+
 
   const now = Date.now();
   const cooldownMs = (alertConfig.cooldownMinutes || 3) * 60 * 1000;
@@ -351,7 +357,7 @@ app.post('/api/send-alert', async (req, res) => {
     const targetType = alertConfig.targetType;
     const targetId = alertConfig.targetId;
 
-    const result = await executeSendMessage(message, targetType, targetId);
+    const result = await executeSendMessage(message, targetType, targetId, styles, urgency);
     
     // Update history
     if (alertKey) {
@@ -381,13 +387,20 @@ app.post('/api/test-alert', async (req, res) => {
 
   try {
     const nowStr = new Date().toLocaleTimeString('vi-VN');
-    const testMsg = `🔔 [THỬ NGHIỆM HỆ THỐNG ĐIỀU PHỐI NHÀ THUỐC]\n` +
-      `✅ Kết nối thành công giữa Web Dashboard và Zalo!\n` +
-      `📍 Người nhận: ${alertConfig.targetName || 'Zalo của bạn'}\n` +
-      `⏰ Thời gian kiểm tra: ${nowStr}\n` +
-      `👉 Khi phát hiện quá tải khách chờ hoặc mất cân đối quầy, thông báo khẩn sẽ tự động gửi đến đây.`;
+    const title = `[THỬ NGHIỆM - ĐIỀU PHỐI NHÀ THUỐC]`;
+    const testMsg = `${title}\n` +
+      `• Kết nối: Thành công giữa Web Dashboard và Zalo\n` +
+      `• Người nhận: ${alertConfig.targetName || 'Zalo của bạn'}\n` +
+      `• Tình trạng: Hệ thống giám sát tự động hoạt động bình thường\n` +
+      `• Thời gian: ${nowStr}`;
 
-    const result = await executeSendMessage(testMsg, alertConfig.targetType, alertConfig.targetId);
+    const styles = [
+      { start: 0, len: title.length, st: 'b' },
+      { start: 0, len: title.length, st: 'c_0d6efd' },
+      { start: 0, len: title.length, st: 'f_18' },
+    ];
+
+    const result = await executeSendMessage(testMsg, alertConfig.targetType, alertConfig.targetId, styles, 0);
     res.json({ success: true, message: 'Đã gửi tin nhắn thử nghiệm thành công!', result });
   } catch (err) {
     console.error('[Zalo Service] Lỗi gửi test:', err);

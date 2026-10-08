@@ -30,14 +30,21 @@ export interface DispatchRules {
 
 export interface DispatchAlert {
   id: string;
-  type: 'overload' | 'imbalance' | 'no_counter' | 'new_counter';
+  type: 'overload' | 'imbalance' | 'no_counter' | 'new_counter' | 'reinforced' | 'low_traffic';
   severity: 'danger' | 'warning' | 'info';
   pharmacyId?: string;
   pharmacyName?: string;
   message: string;
   recommendation?: string;
   timestamp: number;
+  metadata?: {
+    addedCounters?: string[];
+    initialCounterCount?: number;
+    totalCounters?: number;
+    waitingCount?: number;
+  };
 }
+
 
 export interface AppSettings {
   defaultScale: number;

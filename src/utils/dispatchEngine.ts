@@ -1,9 +1,18 @@
 import { PharmacyScreen, DispatchRules, DispatchAlert } from '../types';
 
+interface OverloadBaseline {
+  initialCounterCount: number;
+  initialCounters: string[];
+  reportedReinforcedCounters: string[];
+}
+
+// Lưu mốc số quầy tại thời điểm bắt đầu phát cảnh báo quá tải cho từng nhà thuốc
+const baselineMap = new Map<string, OverloadBaseline>();
+
 export function evaluateDispatchRules(
   pharmacies: PharmacyScreen[],
   rules: DispatchRules,
-  prevPharmacies: PharmacyScreen[]
+  _prevPharmacies?: PharmacyScreen[]
 ): {
   alerts: DispatchAlert[];
   soundType?: 'danger' | 'warning' | 'success' | 'imbalance';
@@ -11,33 +20,14 @@ export function evaluateDispatchRules(
   const alerts: DispatchAlert[] = [];
   let highestSound: 'danger' | 'warning' | 'success' | 'imbalance' | undefined = undefined;
 
-  // 1. Kiểm tra từng nhà thuốc (Quá tải, Chưa mở quầy, Mở thêm quầy mới)
+  // 1. Kiểm tra từng nhà thuốc (Quá tải, Quầy tăng cường, Chưa mở quầy, Vãn khách)
   for (const p of pharmacies) {
     if (!p.enabled) continue;
     const stats = p.stats || { waitingCount: 0, servingCount: 0, activeCounters: [], lastUpdated: Date.now() };
     const waiting = stats.waitingCount;
     const counterCount = stats.activeCounters.length;
 
-    // Phát hiện quầy mới được mở
-    const prevP = prevPharmacies.find((item) => item.id === p.id);
-    const prevCounters = prevP?.stats?.activeCounters || [];
-    const newCounters = stats.activeCounters.filter((c) => !prevCounters.includes(c));
-
-    if (newCounters.length > 0 && prevCounters.length > 0) {
-      alerts.push({
-        id: `new-${p.id}-${Date.now()}`,
-        type: 'new_counter',
-        severity: 'info',
-        pharmacyId: p.id,
-        pharmacyName: p.name,
-        message: `${p.name} vừa mở thêm Quầy ${newCounters.join(', ')}`,
-        recommendation: `Hiện có ${counterCount} quầy đang hoạt động phục vụ bệnh nhân.`,
-        timestamp: Date.now(),
-      });
-      highestSound = highestSound || 'success';
-    }
-
-    // Tình huống A: Có khách chờ nhưng chưa mở quầy nào
+    // Tình huống 5: Có khách chờ nhưng chưa mở quầy nào
     if (waiting > 0 && counterCount === 0) {
       alerts.push({
         id: `no-counter-${p.id}`,
@@ -46,44 +36,139 @@ export function evaluateDispatchRules(
         pharmacyId: p.id,
         pharmacyName: p.name,
         message: `Chưa mở quầy phục vụ tại ${p.name}!`,
-        recommendation: `Đang có ${waiting} khách chờ nhưng chưa có quầy mở. Cần mở quầy khẩn cấp.`,
+        recommendation: `Mở quầy gấp`,
         timestamp: Date.now(),
+        metadata: {
+          waitingCount: waiting,
+          totalCounters: 0,
+        },
       });
       highestSound = 'danger';
       continue;
     }
 
-    // Tình huống B: Quá tải tỉ lệ khách chờ / quầy
-    if (counterCount > 0 && waiting > counterCount * rules.maxWaitingPerCounter) {
+    // Tình huống 1 & 2: Quá tải tỉ lệ khách chờ / quầy & Theo dõi quầy tăng cường
+    const isOverloaded = counterCount > 0 && waiting > counterCount * rules.maxWaitingPerCounter;
+
+    if (isOverloaded) {
       const neededCounters = Math.ceil(waiting / rules.maxWaitingPerCounter) - counterCount;
-      alerts.push({
-        id: `overload-${p.id}`,
-        type: 'overload',
-        severity: 'danger',
-        pharmacyId: p.id,
-        pharmacyName: p.name,
-        message: `${p.name} vượt tải trọng (${waiting} khách / ${counterCount} quầy)`,
-        recommendation: `Đề nghị mở thêm tối thiểu ${Math.max(1, neededCounters)} quầy để giảm thời gian chờ.`,
-        timestamp: Date.now(),
-      });
-      highestSound = 'danger';
-    } else if (waiting >= rules.crowdedThreshold) {
-      // Tình huống C: Số khách chờ chạm ngưỡng đông
-      alerts.push({
-        id: `crowded-${p.id}`,
-        type: 'overload',
-        severity: 'warning',
-        pharmacyId: p.id,
-        pharmacyName: p.name,
-        message: `${p.name} bắt đầu đông khách (${waiting} khách chờ)`,
-        recommendation: `Chuẩn bị nhân sự dự phòng cho các quầy tiếp theo.`,
-        timestamp: Date.now(),
-      });
-      if (highestSound !== 'danger') highestSound = 'warning';
+
+      // Lưu mốc ban đầu nếu là lần đầu quá tải
+      if (!baselineMap.has(p.id)) {
+        baselineMap.set(p.id, {
+          initialCounterCount: counterCount,
+          initialCounters: [...stats.activeCounters],
+          reportedReinforcedCounters: [],
+        });
+
+        // Bắn cảnh báo ban đầu
+        alerts.push({
+          id: `overload-${p.id}`,
+          type: 'overload',
+          severity: 'danger',
+          pharmacyId: p.id,
+          pharmacyName: p.name,
+          message: `${p.name} vượt tải trọng (${waiting} khách / ${counterCount} quầy)`,
+          recommendation: `Mở thêm tối thiểu ${Math.max(1, neededCounters)} quầy`,
+          timestamp: Date.now(),
+          metadata: {
+            waitingCount: waiting,
+            totalCounters: counterCount,
+            initialCounterCount: counterCount,
+          },
+        });
+        highestSound = 'danger';
+      } else {
+        // Đã có mốc ban đầu -> Kiểm tra xem có quầy mới được tăng cường hay không
+        const base = baselineMap.get(p.id)!;
+        const newReinforced = stats.activeCounters.filter(
+          (c) => !base.initialCounters.includes(c) && !base.reportedReinforcedCounters.includes(c)
+        );
+
+        if (newReinforced.length > 0) {
+          alerts.push({
+            id: `reinforced-${p.id}-${newReinforced.join('-')}`,
+            type: 'reinforced',
+            severity: 'info',
+            pharmacyId: p.id,
+            pharmacyName: p.name,
+            message: `${p.name} đã tăng cường thêm Quầy ${newReinforced.join(', ')}`,
+            recommendation: `Đang có ${counterCount} quầy phục vụ (ban đầu ${base.initialCounterCount} quầy)`,
+            timestamp: Date.now(),
+            metadata: {
+              addedCounters: newReinforced,
+              initialCounterCount: base.initialCounterCount,
+              totalCounters: counterCount,
+              waitingCount: waiting,
+            },
+          });
+          base.reportedReinforcedCounters.push(...newReinforced);
+          highestSound = highestSound || 'success';
+        } else {
+          // Vẫn trong tình trạng quá tải
+          alerts.push({
+            id: `overload-${p.id}`,
+            type: 'overload',
+            severity: 'danger',
+            pharmacyId: p.id,
+            pharmacyName: p.name,
+            message: `${p.name} vượt tải trọng (${waiting} khách / ${counterCount} quầy)`,
+            recommendation: `Mở thêm tối thiểu ${Math.max(1, neededCounters)} quầy`,
+            timestamp: Date.now(),
+            metadata: {
+              waitingCount: waiting,
+              totalCounters: counterCount,
+              initialCounterCount: base.initialCounterCount,
+            },
+          });
+          highestSound = 'danger';
+        }
+      }
+    } else {
+      // Khi đã giảm tải an toàn -> Xóa mốc baseline
+      if (baselineMap.has(p.id)) {
+        baselineMap.delete(p.id);
+      }
+
+      // Tình huống Đông nhẹ (Chạm ngưỡng đông)
+      if (waiting >= rules.crowdedThreshold) {
+        alerts.push({
+          id: `crowded-${p.id}`,
+          type: 'overload',
+          severity: 'warning',
+          pharmacyId: p.id,
+          pharmacyName: p.name,
+          message: `${p.name} bắt đầu đông khách (${waiting} khách chờ)`,
+          recommendation: `Chuẩn bị quầy dự phòng`,
+          timestamp: Date.now(),
+          metadata: {
+            waitingCount: waiting,
+            totalCounters: counterCount,
+          },
+        });
+        if (highestSound !== 'danger') highestSound = 'warning';
+      } 
+      // Tình huống 6: Vãn khách hoàn toàn (nếu đang mở ≥ 3 quầy mà khách ≤ 1)
+      else if (waiting <= 1 && counterCount >= 3) {
+        alerts.push({
+          id: `low-traffic-${p.id}`,
+          type: 'low_traffic',
+          severity: 'info',
+          pharmacyId: p.id,
+          pharmacyName: p.name,
+          message: `${p.name} đã vãn khách hoàn toàn`,
+          recommendation: `Đã vãn khách hoàn toàn`,
+          timestamp: Date.now(),
+          metadata: {
+            waitingCount: waiting,
+            totalCounters: counterCount,
+          },
+        });
+      }
     }
   }
 
-  // 2. Kiểm tra lệch tải giữa Nhà thuốc 1 và Nhà thuốc 2
+  // 2. Tình huống 4: Kiểm tra lệch tải giữa Nhà thuốc 1 và Nhà thuốc 2
   const nt1 = pharmacies.find((p) => p.code === 'NT1') || pharmacies[0];
   const nt2 = pharmacies.find((p) => p.code === 'NT2') || pharmacies[1];
 
@@ -93,7 +178,6 @@ export function evaluateDispatchRules(
     const diff = Math.abs(w1 - w2);
 
     if (diff >= rules.maxImbalanceNT1NT2 && (w1 > 0 || w2 > 0)) {
-      const heavier = w1 > w2 ? nt1 : nt2;
       const lighter = w1 > w2 ? nt2 : nt1;
 
       alerts.push({
@@ -101,8 +185,11 @@ export function evaluateDispatchRules(
         type: 'imbalance',
         severity: 'warning',
         message: `Lệch tải giữa NT1 & NT2 (Chênh lệch ${diff} khách)`,
-        recommendation: `${heavier.name} đang đông hơn (${Math.max(w1, w2)} khách vs ${Math.min(w1, w2)} khách). CSKH đề nghị hướng dẫn khách sang ${lighter.name}.`,
+        recommendation: `Điều phối khách sang ${lighter.name}`,
         timestamp: Date.now(),
+        metadata: {
+          waitingCount: diff,
+        },
       });
       if (highestSound !== 'danger') highestSound = 'imbalance';
     }
