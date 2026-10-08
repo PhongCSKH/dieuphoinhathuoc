@@ -44,7 +44,9 @@ export const PharmacyCard: React.FC<PharmacyCardProps> = ({
 
   const handleZoomChange = (delta: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    const newScale = Math.min(1.25, Math.max(0.5, parseFloat((pharmacy.scale + delta).toFixed(2))));
+    // Allow zooming down to 30% up to 120%
+    const currentScale = pharmacy.scale || 0.50;
+    const newScale = Math.min(1.20, Math.max(0.30, parseFloat((currentScale + delta).toFixed(2))));
     onUpdateScale(newScale);
   };
 
@@ -57,9 +59,10 @@ export const PharmacyCard: React.FC<PharmacyCardProps> = ({
     return () => clearInterval(interval);
   }, [pharmacy.autoRefreshInterval]);
 
-  const scale = pharmacy.scale || 0.85;
-  const widthPercent = (100 / scale).toFixed(2);
-  const heightPercent = (100 / scale).toFixed(2);
+  // When focused on 1 screen, auto-scale up to 95% if current scale is small, so it fills the screen
+  const effectiveScale = isFocused ? Math.max(pharmacy.scale || 0.50, 0.95) : (pharmacy.scale || 0.50);
+  const widthPercent = (100 / effectiveScale).toFixed(2);
+  const heightPercent = (100 / effectiveScale).toFixed(2);
 
   const stats = pharmacy.stats || {
     waitingCount: 0,
@@ -107,17 +110,17 @@ export const PharmacyCard: React.FC<PharmacyCardProps> = ({
             <button
               onClick={(e) => handleZoomChange(-0.05, e)}
               className="p-1 hover:text-white hover:bg-slate-700 rounded transition"
-              title="Thu nhỏ tỉ lệ (Zoom out)"
+              title="Thu nhỏ tỉ lệ (-5%)"
             >
               <FontAwesomeIcon icon={faMagnifyingGlassMinus} className="text-[11px]" />
             </button>
             <span className="px-1 text-[11px] font-mono text-slate-300 font-semibold min-w-[34px] text-center">
-              {Math.round(scale * 100)}%
+              {Math.round(effectiveScale * 100)}%
             </span>
             <button
               onClick={(e) => handleZoomChange(0.05, e)}
               className="p-1 hover:text-white hover:bg-slate-700 rounded transition"
-              title="Phóng to tỉ lệ (Zoom in)"
+              title="Phóng to tỉ lệ (+5%)"
             >
               <FontAwesomeIcon icon={faMagnifyingGlassPlus} className="text-[11px]" />
             </button>
@@ -254,7 +257,7 @@ export const PharmacyCard: React.FC<PharmacyCardProps> = ({
           style={{
             width: `${widthPercent}%`,
             height: `${heightPercent}%`,
-            transform: `scale(${scale})`,
+            transform: `scale(${effectiveScale})`,
             transformOrigin: 'top left',
           }}
         >

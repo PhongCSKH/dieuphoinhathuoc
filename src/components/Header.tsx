@@ -15,7 +15,8 @@ import {
   faPause, 
   faBell, 
   faBellSlash,
-  faTriangleExclamation
+  faTriangleExclamation,
+  faMaximize
 } from '@fortawesome/free-solid-svg-icons';
 import { LayoutMode } from '../types';
 import { SCALE_OPTIONS } from '../constants';
@@ -168,12 +169,12 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="w-[1px] h-5 bg-slate-800 mx-1"></div>
 
         {/* Global Scale Quick Selector */}
-        <div className="flex items-center gap-1.5 pl-1 pr-2">
-          <span className="text-xs text-slate-400">Zoom:</span>
+        <div className="flex items-center gap-1.5 pl-1 pr-1">
+          <span className="text-xs text-slate-400">Tỉ lệ TV:</span>
           <select
             value={globalScale}
             onChange={(e) => onChangeGlobalScale(parseFloat(e.target.value))}
-            className="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-md px-1.5 py-0.5 outline-none focus:border-sky-500"
+            className="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-md px-1.5 py-0.5 outline-none focus:border-sky-500 font-mono font-medium"
           >
             {SCALE_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -181,6 +182,20 @@ export const Header: React.FC<HeaderProps> = ({
               </option>
             ))}
           </select>
+
+          {/* Quick Fit 50% Button */}
+          <button
+            onClick={() => onChangeGlobalScale(0.50)}
+            className={`px-2 py-0.5 rounded text-[11px] font-semibold border transition flex items-center gap-1 ${
+              globalScale === 0.50 
+                ? 'bg-sky-600 text-white border-sky-500' 
+                : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white'
+            }`}
+            title="Tự động thu phóng 50% vừa khít trọn vẹn cả 4 màn hình"
+          >
+            <FontAwesomeIcon icon={faMaximize} className="text-[10px]" />
+            <span>Vừa khít (50%)</span>
+          </button>
         </div>
       </div>
 
