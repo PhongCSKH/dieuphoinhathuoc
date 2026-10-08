@@ -20,11 +20,13 @@ import {
   faSquare,
   faTableColumns,
   faTableCells,
-  faMaximize
+  faMaximize,
+  faComments
 } from '@fortawesome/free-solid-svg-icons';
 import { PharmacyScreen, DispatchRules, LayoutMode } from '../types';
 import { DEFAULT_PHARMACIES, SCALE_OPTIONS } from '../constants';
 import { soundManager } from '../utils/audio';
+import { ZaloSettingsTab } from './ZaloSettingsTab';
 
 interface ManageModalProps {
   isOpen: boolean;
@@ -51,7 +53,7 @@ export const ManageModal: React.FC<ManageModalProps> = ({
   globalScale,
   onChangeGlobalScale,
 }) => {
-  const [activeTab, setActiveTab] = useState<'display' | 'pharmacies' | 'rules'>('display');
+  const [activeTab, setActiveTab] = useState<'display' | 'pharmacies' | 'rules' | 'zalo'>('display');
   const [list, setList] = useState<PharmacyScreen[]>(pharmacies);
   const [localRules, setLocalRules] = useState<DispatchRules>(rules);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -223,7 +225,21 @@ export const ManageModal: React.FC<ManageModalProps> = ({
             <FontAwesomeIcon icon={faScaleBalanced} className="text-xs" />
             <span>Quy Tắc Cảnh Báo Điều Phối</span>
           </button>
+
+          {/* Tab 4: Zalo Alerts */}
+          <button
+            onClick={() => setActiveTab('zalo')}
+            className={`px-4 py-2 text-xs font-semibold rounded-t-lg transition flex items-center gap-2 border-b-2 ${
+              activeTab === 'zalo'
+                ? 'border-sky-500 text-sky-400 bg-slate-900'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <FontAwesomeIcon icon={faComments} className="text-xs" />
+            <span>Cảnh Báo Zalo</span>
+          </button>
         </div>
+
 
         {/* Notification Toast */}
         {notification && (
@@ -584,7 +600,13 @@ export const ManageModal: React.FC<ManageModalProps> = ({
             </div>
           )}
 
+          {/* TAB 4: CẢNH BÁO QUA ZALO */}
+          {activeTab === 'zalo' && (
+            <ZaloSettingsTab />
+          )}
+
           {/* Quick Notice */}
+
           <div className="p-3 bg-sky-500/5 border border-sky-500/20 rounded-xl flex items-start gap-2.5 text-xs text-slate-300">
             <FontAwesomeIcon icon={faShieldHalved} className="text-sm text-sky-400 flex-shrink-0 mt-0.5" />
             <div>

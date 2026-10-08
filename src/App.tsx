@@ -10,6 +10,11 @@ import { PasswordModal } from './components/PasswordModal';
 import { AlertBanner } from './components/AlertBanner';
 import { evaluateDispatchRules } from './utils/dispatchEngine';
 import { soundManager } from './utils/audio';
+import { 
+  dispatchZaloAlert, 
+  formatZaloOverloadAlert, 
+  formatZaloImbalanceAlert 
+} from './utils/zalo';
 
 export const App: React.FC = () => {
   // 1. Pharmacies state
@@ -211,9 +216,42 @@ export const App: React.FC = () => {
           soundManager.play(soundType);
         }
 
+        // Tự động chuyển tiếp cảnh báo khẩn đến Zalo cá nhân / nhóm
+        for (const alert of newAlerts) {
+          if (alert.severity === 'danger' || alert.severity === 'warning') {
+            let msg = '';
+            if (alert.type === 'overload' || alert.type === 'no_counter') {
+              const ph = updatedList.find((p) => p.id === alert.pharmacyId);
+              msg = formatZaloOverloadAlert({
+                pharmacyName: alert.pharmacyName || ph?.name || 'Nhà thuốc',
+                waitingCount: ph?.stats?.waitingCount || 0,
+                activeCounters: ph?.stats?.activeCounters || [],
+                ratio: (ph?.stats?.waitingCount || 0) / Math.max(1, ph?.stats?.activeCounters.length || 1),
+                threshold: rules.maxWaitingPerCounter,
+              });
+            } else if (alert.type === 'imbalance') {
+              const nt1 = updatedList.find((p) => p.code === 'NT1') || updatedList[0];
+              const nt2 = updatedList.find((p) => p.code === 'NT2') || updatedList[1];
+              const w1 = nt1?.stats?.waitingCount || 0;
+              const w2 = nt2?.stats?.waitingCount || 0;
+              msg = formatZaloImbalanceAlert({
+                nt1Waiting: w1,
+                nt2Waiting: w2,
+                diff: Math.abs(w1 - w2),
+                threshold: rules.maxImbalanceNT1NT2,
+              });
+            }
+
+            if (msg) {
+              dispatchZaloAlert({ alertKey: alert.id, message: msg });
+            }
+          }
+        }
+
         prevPharmaciesRef.current = updatedList;
       }
     };
+
 
     fetchTelemetry();
     const interval = setInterval(fetchTelemetry, (rules.telemetryInterval || 4) * 1000);

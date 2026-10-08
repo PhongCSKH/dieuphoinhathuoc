@@ -46,3 +46,32 @@ export interface AppSettings {
   showHeaders: boolean;
   autoHideControls: boolean;
 }
+
+export interface ZaloAlertConfig {
+  enabled: boolean;
+  targetType: 'user' | 'group';
+  targetId: string;
+  targetName: string;
+  cooldownMinutes: number;
+}
+
+export interface ZaloContact {
+  id: string;
+  name: string;
+  avatar?: string;
+  type: 'user' | 'group';
+}
+
+export interface ZaloStatus {
+  online: boolean;
+  loggedIn: boolean;
+  qrStatus: string;
+  qrCode: string | null;
+  user: {
+    id?: string;
+    name: string;
+    avatar?: string;
+  } | null;
+  config: ZaloAlertConfig;
+}
+
