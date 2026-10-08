@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { Zalo, ThreadType } from 'zca-js';
 
@@ -9,8 +10,24 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = 5050;
-const SESSION_FILE = path.join(__dirname, 'session.json');
-const CONFIG_FILE = path.join(__dirname, 'config.json');
+
+// Thư mục lưu trữ cố định trong Windows AppData - Miễn nhiễm với Git branch, build hay xóa file dự án
+const USER_DATA_DIR = path.join(
+  process.env.APPDATA || (process.platform === 'darwin' ? path.join(process.env.HOME || os.homedir(), 'Library/Preferences') : path.join(process.env.HOME || os.homedir(), '.config')),
+  'zalo-dispatch-bridge'
+);
+if (!fs.existsSync(USER_DATA_DIR)) {
+  try {
+    fs.mkdirSync(USER_DATA_DIR, { recursive: true });
+  } catch (err) {
+    console.error('Không thể tạo thư mục AppData:', err);
+  }
+}
+
+const SESSION_FILE = path.join(USER_DATA_DIR, 'session.json');
+const CONFIG_FILE = path.join(USER_DATA_DIR, 'config.json');
+const LOCAL_SESSION_FILE = path.join(__dirname, 'session.json');
+const LOCAL_CONFIG_FILE = path.join(__dirname, 'config.json');
 
 const app = express();
 app.use(cors({ origin: '*' }));
@@ -25,6 +42,31 @@ let currentUser = null;
 let currentOwnId = null;
 let isLoggingIn = false;
 
+// Helper lưu & đọc session
+function loadSessionData() {
+  if (fs.existsSync(SESSION_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(SESSION_FILE, 'utf-8'));
+    } catch {}
+  }
+  if (fs.existsSync(LOCAL_SESSION_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(LOCAL_SESSION_FILE, 'utf-8'));
+    } catch {}
+  }
+  return null;
+}
+
+function saveSessionData(data) {
+  try {
+    fs.writeFileSync(SESSION_FILE, JSON.stringify(data, null, 2), 'utf-8');
+    try { fs.writeFileSync(LOCAL_SESSION_FILE, JSON.stringify(data, null, 2), 'utf-8'); } catch {}
+    console.log('[Zalo Service] Đã lưu phiên đăng nhập vĩnh viễn vào:', SESSION_FILE);
+  } catch (err) {
+    console.error('[Zalo Service] Lỗi lưu session:', err.message);
+  }
+}
+
 // Load persisted config
 let alertConfig = {
   enabled: true,
@@ -34,17 +76,29 @@ let alertConfig = {
   cooldownMinutes: 3,
 };
 
-if (fs.existsSync(CONFIG_FILE)) {
-  try {
-    alertConfig = { ...alertConfig, ...JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')) };
-  } catch (e) {
-    console.error('Error loading config.json:', e);
+function loadConfigData() {
+  if (fs.existsSync(CONFIG_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+    } catch {}
   }
+  if (fs.existsSync(LOCAL_CONFIG_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(LOCAL_CONFIG_FILE, 'utf-8'));
+    } catch {}
+  }
+  return null;
+}
+
+const initialSavedConfig = loadConfigData();
+if (initialSavedConfig) {
+  alertConfig = { ...alertConfig, ...initialSavedConfig };
 }
 
 function saveConfig() {
   try {
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(alertConfig, null, 2), 'utf-8');
+    try { fs.writeFileSync(LOCAL_CONFIG_FILE, JSON.stringify(alertConfig, null, 2), 'utf-8'); } catch {}
   } catch (e) {
     console.error('Error saving config.json:', e);
   }
@@ -55,14 +109,14 @@ const alertHistory = new Map();
 
 // Initialize session if exists
 async function tryAutoLogin() {
-  if (!fs.existsSync(SESSION_FILE)) {
-    console.log('[Zalo Service] Chưa có phiên đăng nhập (session.json).');
+  const credentials = loadSessionData();
+  if (!credentials) {
+    console.log('[Zalo Service] Chưa có phiên đăng nhập đã lưu trong hệ thống.');
     return false;
   }
 
   try {
-    console.log('[Zalo Service] Đang khôi phục phiên đăng nhập từ session.json...');
-    const credentials = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf-8'));
+    console.log('[Zalo Service] Đang khôi phục phiên đăng nhập từ AppData...');
     zaloInstance = new Zalo();
     zaloApi = await zaloInstance.login(credentials);
     
@@ -71,6 +125,18 @@ async function tryAutoLogin() {
     } catch {
       currentOwnId = null;
     }
+
+    // Tự động làm mới và cập nhật cookies mới nhất vào storage
+    try {
+      const fullCookies = zaloApi.getCookie().toJSON().cookies;
+      const ctx = zaloApi.getContext();
+      saveSessionData({
+        cookie: fullCookies,
+        imei: ctx.imei,
+        userAgent: ctx.userAgent,
+        language: ctx.language || 'vi',
+      });
+    } catch {}
 
     try {
       const info = await zaloApi.fetchAccountInfo();
@@ -84,7 +150,7 @@ async function tryAutoLogin() {
     }
 
     qrStatus = 'ready';
-    console.log(`[Zalo Service] Đăng nhập thành công! Tài khoản: ${currentUser.name} (ID: ${currentOwnId})`);
+    console.log(`[Zalo Service] Đăng nhập tự động thành công! Tài khoản: ${currentUser.name} (ID: ${currentOwnId})`);
     return true;
   } catch (err) {
     console.warn('[Zalo Service] Khôi phục session thất bại:', err.message);
@@ -93,7 +159,6 @@ async function tryAutoLogin() {
     qrStatus = 'idle';
     return false;
   }
-
 }
 
 // Start QR login
@@ -130,12 +195,7 @@ async function startQRLogin() {
       }
       // 4: GotLoginInfo
       else if (event.type === 4) {
-        try {
-          fs.writeFileSync(SESSION_FILE, JSON.stringify(event.data, null, 2), 'utf-8');
-          console.log('[Zalo Service] Đã lưu thông tin phiên đăng nhập vào session.json.');
-        } catch (err) {
-          console.error('[Zalo Service] Lỗi lưu session:', err);
-        }
+        saveSessionData(event.data);
       }
     });
 
@@ -145,6 +205,23 @@ async function startQRLogin() {
     } catch {
       currentOwnId = null;
     }
+
+    // Sau khi đăng nhập thành công, trích xuất và lưu trọn vẹn bộ cookie phiên mới nhất từ Zalo Context
+    try {
+      const fullCookies = zaloApi.getCookie().toJSON().cookies;
+      const ctx = zaloApi.getContext();
+      const completeSession = {
+        cookie: fullCookies,
+        imei: ctx.imei,
+        userAgent: ctx.userAgent,
+        language: ctx.language || 'vi',
+      };
+      saveSessionData(completeSession);
+      console.log('[Zalo Service] Đã cập nhật trọn vẹn bộ Cookie phiên đăng nhập Zalo vào AppData!');
+    } catch (saveErr) {
+      console.warn('[Zalo Service] Cảnh báo lưu cookie cập nhật:', saveErr.message);
+    }
+
     try {
       const info = await zaloApi.fetchAccountInfo();
       currentUser = {
@@ -210,9 +287,8 @@ app.post('/api/login-qr', async (req, res) => {
 // 3. Logout
 app.post('/api/logout', (req, res) => {
   try {
-    if (fs.existsSync(SESSION_FILE)) {
-      fs.unlinkSync(SESSION_FILE);
-    }
+    if (fs.existsSync(SESSION_FILE)) fs.unlinkSync(SESSION_FILE);
+    if (fs.existsSync(LOCAL_SESSION_FILE)) fs.unlinkSync(LOCAL_SESSION_FILE);
   } catch {}
   zaloApi = null;
   currentUser = null;
