@@ -6,6 +6,7 @@ import { DEFAULT_PHARMACIES, DEFAULT_RULES } from './constants';
 import { Header } from './components/Header';
 import { PharmacyCard } from './components/PharmacyCard';
 import { ManageModal } from './components/ManageModal';
+import { PasswordModal } from './components/PasswordModal';
 import { AlertBanner } from './components/AlertBanner';
 import { evaluateDispatchRules } from './utils/dispatchEngine';
 import { soundManager } from './utils/audio';
@@ -44,10 +45,10 @@ export const App: React.FC = () => {
     return (localStorage.getItem('dieu_phoi_layout') as LayoutMode) || 'grid-4';
   });
 
-  // 4. Global scale
+  // 4. Global scale (mặc định 0.50 vừa khít lưới 4)
   const [globalScale, setGlobalScale] = useState<number>(() => {
     const saved = localStorage.getItem('dieu_phoi_scale');
-    return saved ? parseFloat(saved) : 0.85;
+    return saved ? parseFloat(saved) : 0.50;
   });
 
   // 5. Active Alerts
@@ -56,7 +57,7 @@ export const App: React.FC = () => {
   // 6. UI flags
   const [focusPharmacyId, setFocusPharmacyId] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-  const [carouselActive, setCarouselActive] = useState<boolean>(false);
+  const [isPasswordOpen, setIsPasswordOpen] = useState<boolean>(false);
   const [isManageOpen, setIsManageOpen] = useState<boolean>(false);
   const [globalRefreshCount, setGlobalRefreshCount] = useState<number>(0);
 
@@ -128,7 +129,7 @@ export const App: React.FC = () => {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (isManageOpen) return;
+      if (isManageOpen || isPasswordOpen) return;
       if (e.key === 'Escape') {
         if (focusPharmacyId) setFocusPharmacyId(null);
       } else if (e.key === '1' && pharmacies[0]) {
@@ -145,7 +146,7 @@ export const App: React.FC = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [focusPharmacyId, isManageOpen, pharmacies]);
+  }, [focusPharmacyId, isManageOpen, isPasswordOpen, pharmacies]);
 
   // Periodic Telemetry Ingestion (Fetch QMS queue data)
   useEffect(() => {
@@ -157,7 +158,6 @@ export const App: React.FC = () => {
         pharmacies.map(async (p) => {
           if (!p.roomId) return p;
           try {
-            // Direct query or proxy fallback
             const endpoint = `https://qms.tahospital.vn/api/v1/waitqueue?room=${p.roomId}&status=lcd`;
             const res = await fetch(endpoint, { cache: 'no-store' });
             if (res.ok) {
@@ -179,7 +179,6 @@ export const App: React.FC = () => {
                   lastUpdated: Date.now(),
                 };
 
-                // Check if changed
                 if (
                   p.stats?.waitingCount !== newStats.waitingCount ||
                   p.stats?.servingCount !== newStats.servingCount ||
@@ -192,14 +191,13 @@ export const App: React.FC = () => {
               }
             }
           } catch {
-            // If cross-origin block occurs in standard browser without proxy, keep existing stats
+            // CORS fallback
           }
           return p;
         })
       );
 
       if (isMounted && hasChanges) {
-        // Evaluate Rules
         const { alerts: newAlerts, soundType } = evaluateDispatchRules(
           updatedList,
           rules,
@@ -225,20 +223,6 @@ export const App: React.FC = () => {
       clearInterval(interval);
     };
   }, [pharmacies, rules]);
-
-  // Carousel auto rotation
-  useEffect(() => {
-    if (!carouselActive || pharmacies.length === 0) return;
-    const interval = setInterval(() => {
-      setFocusPharmacyId((current) => {
-        if (!current) return pharmacies[0].id;
-        const currentIndex = pharmacies.findIndex((p) => p.id === current);
-        const nextIndex = (currentIndex + 1) % pharmacies.length;
-        return pharmacies[nextIndex].id;
-      });
-    }, 20000);
-    return () => clearInterval(interval);
-  }, [carouselActive, pharmacies]);
 
   const focusedPharmacy = pharmacies.find((p) => p.id === focusPharmacyId);
 
@@ -368,16 +352,10 @@ export const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
-      {/* 1. Header Control Bar */}
+      {/* 1. Header Control Bar (Tinh giản, chuyên nghiệp) */}
       <Header
-        layout={layout}
-        onChangeLayout={handleChangeLayout}
         onRefreshAll={() => setGlobalRefreshCount((prev) => prev + 1)}
-        onOpenManage={() => setIsManageOpen(true)}
-        globalScale={globalScale}
-        onChangeGlobalScale={handleChangeGlobalScale}
-        carouselActive={carouselActive}
-        onToggleCarousel={() => setCarouselActive(!carouselActive)}
+        onOpenManage={() => setIsPasswordOpen(true)}
         isFullscreen={isFullscreen}
         onToggleFullscreen={handleToggleFullscreen}
         pharmacyCount={pharmacies.length}
@@ -390,11 +368,21 @@ export const App: React.FC = () => {
       <AlertBanner alerts={alerts} onDismiss={handleDismissAlert} />
 
       {/* 3. Main Viewport Container */}
-      <main className="flex-1 w-full h-[calc(100vh-3.5rem)] overflow-hidden bg-slate-950">
+      <main className="flex-1 w-full h-[calc(100vh-3rem)] overflow-hidden bg-slate-950">
         {renderGridContent()}
       </main>
 
-      {/* 4. Configuration & Rules Modal */}
+      {/* 4. Password Protection Modal (Yêu cầu mật khẩu PhongCSKH@) */}
+      <PasswordModal
+        isOpen={isPasswordOpen}
+        onClose={() => setIsPasswordOpen(false)}
+        onSuccess={() => {
+          setIsPasswordOpen(false);
+          setIsManageOpen(true);
+        }}
+      />
+
+      {/* 5. Configuration & Rules Modal */}
       <ManageModal
         isOpen={isManageOpen}
         onClose={() => setIsManageOpen(false)}
@@ -402,6 +390,10 @@ export const App: React.FC = () => {
         onSavePharmacies={handleSavePharmacies}
         rules={rules}
         onSaveRules={handleSaveRules}
+        layout={layout}
+        onChangeLayout={handleChangeLayout}
+        globalScale={globalScale}
+        onChangeGlobalScale={handleChangeGlobalScale}
       />
     </div>
   );

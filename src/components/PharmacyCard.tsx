@@ -11,7 +11,8 @@ import {
   faUsers,
   faUserCheck,
   faDesktop,
-  faScaleBalanced
+  faScaleBalanced,
+  faEllipsisVertical
 } from '@fortawesome/free-solid-svg-icons';
 import { PharmacyScreen, DispatchAlert } from '../types';
 
@@ -33,22 +34,37 @@ export const PharmacyCard: React.FC<PharmacyCardProps> = ({
   const [iframeKey, setIframeKey] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [hasError, setHasError] = useState<boolean>(false);
+  const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const handleRefresh = (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsLoading(true);
     setHasError(false);
+    setIsMenuOpen(false);
     setIframeKey((prev) => prev + 1);
   };
 
   const handleZoomChange = (delta: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    // Allow zooming down to 30% up to 120%
     const currentScale = pharmacy.scale || 0.50;
     const newScale = Math.min(1.20, Math.max(0.30, parseFloat((currentScale + delta).toFixed(2))));
     onUpdateScale(newScale);
   };
+
+  // Close menu on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+    if (isMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isMenuOpen]);
 
   // Auto refresh interval if set
   useEffect(() => {
@@ -59,7 +75,6 @@ export const PharmacyCard: React.FC<PharmacyCardProps> = ({
     return () => clearInterval(interval);
   }, [pharmacy.autoRefreshInterval]);
 
-  // When focused on 1 screen, auto-scale up to 95% if current scale is small, so it fills the screen
   const effectiveScale = isFocused ? Math.max(pharmacy.scale || 0.50, 0.95) : (pharmacy.scale || 0.50);
   const widthPercent = (100 / effectiveScale).toFixed(2);
   const heightPercent = (100 / effectiveScale).toFixed(2);
@@ -103,60 +118,15 @@ export const PharmacyCard: React.FC<PharmacyCardProps> = ({
           )}
         </div>
 
-        {/* Right: Quick Controls */}
-        <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
-          {/* Zoom Controls */}
-          <div className="flex items-center bg-slate-800/90 rounded-md p-0.5 border border-slate-700/60 text-slate-300">
-            <button
-              onClick={(e) => handleZoomChange(-0.05, e)}
-              className="p-1 hover:text-white hover:bg-slate-700 rounded transition"
-              title="Thu nhỏ tỉ lệ (-5%)"
-            >
-              <FontAwesomeIcon icon={faMagnifyingGlassMinus} className="text-[11px]" />
-            </button>
-            <span className="px-1 text-[11px] font-mono text-slate-300 font-semibold min-w-[34px] text-center">
-              {Math.round(effectiveScale * 100)}%
-            </span>
-            <button
-              onClick={(e) => handleZoomChange(0.05, e)}
-              className="p-1 hover:text-white hover:bg-slate-700 rounded transition"
-              title="Phóng to tỉ lệ (+5%)"
-            >
-              <FontAwesomeIcon icon={faMagnifyingGlassPlus} className="text-[11px]" />
-            </button>
-          </div>
-
-          {/* Refresh Button */}
-          <button
-            onClick={handleRefresh}
-            className="p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-md transition"
-            title="Tải lại quầy này"
-          >
-            <FontAwesomeIcon 
-              icon={faRotate} 
-              className={`text-xs ${isLoading ? 'animate-spin text-sky-400' : ''}`} 
-            />
-          </button>
-
-          {/* Open in new tab */}
-          <a
-            href={pharmacy.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="p-1.5 text-slate-400 hover:text-sky-400 hover:bg-slate-800 rounded-md transition"
-            title="Mở tab riêng"
-          >
-            <FontAwesomeIcon icon={faArrowUpRightFromSquare} className="text-xs" />
-          </a>
-
-          {/* Maximize / Focus Button */}
+        {/* Right: Quick Maximize + 3-Dots Menu */}
+        <div className="relative flex items-center gap-1 flex-shrink-0" ref={menuRef}>
+          {/* Quick Maximize / Focus Button */}
           <button
             onClick={onToggleFocus}
             className={`p-1.5 rounded-md transition ${
               isFocused 
                 ? 'bg-sky-600 text-white hover:bg-sky-500' 
-                : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
             }`}
             title={isFocused ? 'Thu nhỏ về chế độ lưới (Esc)' : 'Phóng to quầy này'}
           >
@@ -165,6 +135,69 @@ export const PharmacyCard: React.FC<PharmacyCardProps> = ({
               className="text-xs" 
             />
           </button>
+
+          {/* 3-Dots Menu Toggle */}
+          <button
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+            className={`p-1.5 rounded-md transition ${
+              isMenuOpen
+                ? 'bg-slate-800 text-sky-400'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+            title="Tùy chọn chức năng"
+          >
+            <FontAwesomeIcon icon={faEllipsisVertical} className="text-xs px-1" />
+          </button>
+
+          {/* 3-Dots Popover Dropdown Menu */}
+          {isMenuOpen && (
+            <div className="absolute right-0 top-8 z-30 w-48 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl py-1.5 text-xs text-slate-200 animate-in fade-in zoom-in-95 duration-150 backdrop-blur-md">
+              {/* Zoom row */}
+              <div className="px-3 py-1.5 flex items-center justify-between border-b border-slate-800/80">
+                <span className="text-[11px] text-slate-400">Tỉ lệ TV:</span>
+                <div className="flex items-center bg-slate-800 rounded-md p-0.5 border border-slate-700/60">
+                  <button
+                    onClick={(e) => handleZoomChange(-0.05, e)}
+                    className="p-1 hover:text-white hover:bg-slate-700 rounded transition"
+                    title="Thu nhỏ (-5%)"
+                  >
+                    <FontAwesomeIcon icon={faMagnifyingGlassMinus} className="text-[10px]" />
+                  </button>
+                  <span className="px-1 font-mono font-bold text-[11px] text-sky-400 min-w-[32px] text-center">
+                    {Math.round(effectiveScale * 100)}%
+                  </span>
+                  <button
+                    onClick={(e) => handleZoomChange(0.05, e)}
+                    className="p-1 hover:text-white hover:bg-slate-700 rounded transition"
+                    title="Phóng to (+5%)"
+                  >
+                    <FontAwesomeIcon icon={faMagnifyingGlassPlus} className="text-[10px]" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Refresh single button */}
+              <button
+                onClick={handleRefresh}
+                className="w-full px-3 py-2 text-left hover:bg-slate-800/80 hover:text-white flex items-center gap-2 transition"
+              >
+                <FontAwesomeIcon icon={faRotate} className={`text-xs ${isLoading ? 'animate-spin text-sky-400' : 'text-slate-400'}`} />
+                <span>Tải lại màn hình</span>
+              </button>
+
+              {/* Open in new tab button */}
+              <a
+                href={pharmacy.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setIsMenuOpen(false)}
+                className="w-full px-3 py-2 text-left hover:bg-slate-800/80 hover:text-white flex items-center gap-2 transition"
+              >
+                <FontAwesomeIcon icon={faArrowUpRightFromSquare} className="text-xs text-slate-400" />
+                <span>Mở trong tab mới</span>
+              </a>
+            </div>
+          )}
         </div>
       </div>
 

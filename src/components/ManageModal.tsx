@@ -10,14 +10,19 @@ import {
   faCheck, 
   faArrowUpRightFromSquare, 
   faShieldHalved,
-  faSliders,
   faHospital,
   faTriangleExclamation,
   faScaleBalanced,
   faDesktop,
-  faVolumeHigh
+  faVolumeHigh,
+  faLayerGroup,
+  faTableCellsLarge,
+  faSquare,
+  faTableColumns,
+  faTableCells,
+  faMaximize
 } from '@fortawesome/free-solid-svg-icons';
-import { PharmacyScreen, DispatchRules } from '../types';
+import { PharmacyScreen, DispatchRules, LayoutMode } from '../types';
 import { DEFAULT_PHARMACIES, SCALE_OPTIONS } from '../constants';
 import { soundManager } from '../utils/audio';
 
@@ -28,6 +33,10 @@ interface ManageModalProps {
   onSavePharmacies: (newPharmacies: PharmacyScreen[]) => void;
   rules: DispatchRules;
   onSaveRules: (newRules: DispatchRules) => void;
+  layout: LayoutMode;
+  onChangeLayout: (newLayout: LayoutMode) => void;
+  globalScale: number;
+  onChangeGlobalScale: (scale: number) => void;
 }
 
 export const ManageModal: React.FC<ManageModalProps> = ({
@@ -37,8 +46,12 @@ export const ManageModal: React.FC<ManageModalProps> = ({
   onSavePharmacies,
   rules,
   onSaveRules,
+  layout,
+  onChangeLayout,
+  globalScale,
+  onChangeGlobalScale,
 }) => {
-  const [activeTab, setActiveTab] = useState<'pharmacies' | 'rules'>('pharmacies');
+  const [activeTab, setActiveTab] = useState<'display' | 'pharmacies' | 'rules'>('display');
   const [list, setList] = useState<PharmacyScreen[]>(pharmacies);
   const [localRules, setLocalRules] = useState<DispatchRules>(rules);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -59,7 +72,7 @@ export const ManageModal: React.FC<ManageModalProps> = ({
       name: `Nhà thuốc ${nextNumber}`,
       code: `NT${nextNumber}`,
       url: 'https://qms.tahospital.vn/view/...',
-      scale: 0.85,
+      scale: 0.50,
       autoRefreshInterval: 0,
       notes: `Quầy phát thuốc ${nextNumber}`,
       enabled: true,
@@ -154,18 +167,13 @@ export const ManageModal: React.FC<ManageModalProps> = ({
       <div className="relative w-full max-w-4xl max-h-[90vh] bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-3.5 border-b border-slate-800 bg-slate-900/90">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center border border-sky-500/30">
-              <FontAwesomeIcon icon={faSliders} className="text-sm" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-white">
-                Cấu Hình Trung Tâm Điều Phối Nhà Thuốc
-              </h2>
-              <p className="text-xs text-slate-400">
-                Tùy chỉnh danh sách màn hình, ngưỡng cảnh báo quá tải và lệch tải
-              </p>
-            </div>
+          <div>
+            <h2 className="text-base font-bold text-white">
+              Cấu Hình Hệ Thống Điều Phối Nhà Thuốc
+            </h2>
+            <p className="text-xs text-slate-400">
+              Quản trị bố cục hiển thị, danh sách quầy và quy tắc cảnh báo
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -175,8 +183,22 @@ export const ManageModal: React.FC<ManageModalProps> = ({
           </button>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex items-center border-b border-slate-800 bg-slate-950/60 px-6 gap-2 pt-2">
+        {/* Tab Navigation (3 Tabs) */}
+        <div className="flex items-center border-b border-slate-800 bg-slate-950/60 px-6 gap-2 pt-2 select-none">
+          {/* Tab 1: Display & Layout (Bộ điều khiển cất vào đây) */}
+          <button
+            onClick={() => setActiveTab('display')}
+            className={`px-4 py-2 text-xs font-semibold rounded-t-lg transition flex items-center gap-2 border-b-2 ${
+              activeTab === 'display'
+                ? 'border-sky-500 text-sky-400 bg-slate-900'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <FontAwesomeIcon icon={faLayerGroup} className="text-xs" />
+            <span>Bố Cục & Tỉ Lệ Màn Hình</span>
+          </button>
+
+          {/* Tab 2: Pharmacies */}
           <button
             onClick={() => setActiveTab('pharmacies')}
             className={`px-4 py-2 text-xs font-semibold rounded-t-lg transition flex items-center gap-2 border-b-2 ${
@@ -186,9 +208,10 @@ export const ManageModal: React.FC<ManageModalProps> = ({
             }`}
           >
             <FontAwesomeIcon icon={faHospital} className="text-xs" />
-            <span>Màn Hình Nhà Thuốc ({list.length})</span>
+            <span>Danh Sách Quầy ({list.length})</span>
           </button>
 
+          {/* Tab 3: Rules */}
           <button
             onClick={() => setActiveTab('rules')}
             className={`px-4 py-2 text-xs font-semibold rounded-t-lg transition flex items-center gap-2 border-b-2 ${
@@ -198,7 +221,7 @@ export const ManageModal: React.FC<ManageModalProps> = ({
             }`}
           >
             <FontAwesomeIcon icon={faScaleBalanced} className="text-xs" />
-            <span>Quy Tắc & Ngưỡng Cảnh Báo Điều Phối</span>
+            <span>Quy Tắc Cảnh Báo Điều Phối</span>
           </button>
         </div>
 
@@ -211,7 +234,102 @@ export const ManageModal: React.FC<ManageModalProps> = ({
 
         {/* Content Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {/* TAB 1: PHARMACIES */}
+          {/* TAB 1: BỐ CỤC & TỈ LỆ HIỂN THỊ */}
+          {activeTab === 'display' && (
+            <div className="space-y-6">
+              {/* Layout mode picker */}
+              <div className="p-4 bg-slate-800/40 border border-slate-700/60 rounded-xl space-y-3">
+                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                  <FontAwesomeIcon icon={faLayerGroup} className="text-sky-400" />
+                  <span>Chọn Bố Cục Chia Lưới Màn Hình:</span>
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+                  <button
+                    onClick={() => onChangeLayout('grid-4')}
+                    className={`p-3 rounded-xl border text-xs font-semibold flex flex-col items-center gap-2 transition ${
+                      layout === 'grid-4'
+                        ? 'bg-sky-600 text-white border-sky-500 shadow-md'
+                        : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    <FontAwesomeIcon icon={faTableCellsLarge} className="text-base" />
+                    <span>Lưới 4 (2x2) ⭐</span>
+                  </button>
+
+                  <button
+                    onClick={() => onChangeLayout('split-1-3')}
+                    className={`p-3 rounded-xl border text-xs font-semibold flex flex-col items-center gap-2 transition ${
+                      layout === 'split-1-3'
+                        ? 'bg-sky-600 text-white border-sky-500 shadow-md'
+                        : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    <FontAwesomeIcon icon={faSquare} className="text-base" />
+                    <span>1 To + 3 Phụ</span>
+                  </button>
+
+                  <button
+                    onClick={() => onChangeLayout('grid-2')}
+                    className={`p-3 rounded-xl border text-xs font-semibold flex flex-col items-center gap-2 transition ${
+                      layout === 'grid-2'
+                        ? 'bg-sky-600 text-white border-sky-500 shadow-md'
+                        : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    <FontAwesomeIcon icon={faTableColumns} className="text-base" />
+                    <span>Lưới 2 (1x2)</span>
+                  </button>
+
+                  <button
+                    onClick={() => onChangeLayout('grid-6')}
+                    className={`p-3 rounded-xl border text-xs font-semibold flex flex-col items-center gap-2 transition ${
+                      layout === 'grid-6'
+                        ? 'bg-sky-600 text-white border-sky-500 shadow-md'
+                        : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    <FontAwesomeIcon icon={faTableCells} className="text-base" />
+                    <span>Lưới 6 (2x3)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Global Scale Picker */}
+              <div className="p-4 bg-slate-800/40 border border-slate-700/60 rounded-xl space-y-3">
+                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                  <FontAwesomeIcon icon={faMaximize} className="text-emerald-400" />
+                  <span>Tỉ Lệ Thu Phóng Toàn Bộ Màn Hình TV (Zoom Scale):</span>
+                </h3>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Tùy chỉnh tỉ lệ để đảm bảo toàn bộ bảng gọi số QMS hiển thị vừa vặn không bị tràn trên màn hình. Mức <strong>50%</strong> là chuẩn xác nhất cho lưới 4.
+                </p>
+
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  <select
+                    value={globalScale}
+                    onChange={(e) => onChangeGlobalScale(parseFloat(e.target.value))}
+                    className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-3 py-2 outline-none focus:border-sky-500 font-mono font-medium"
+                  >
+                    {SCALE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    onClick={() => onChangeGlobalScale(0.50)}
+                    className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold rounded-lg shadow transition flex items-center gap-1.5"
+                  >
+                    <FontAwesomeIcon icon={faMaximize} />
+                    <span>Đặt Vừa Khít (50%)</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: QUẢN LÝ QUẦY NHÀ THUỐC */}
           {activeTab === 'pharmacies' && (
             <>
               <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-slate-800">
@@ -262,7 +380,6 @@ export const ManageModal: React.FC<ManageModalProps> = ({
                     }`}
                   >
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                      {/* Code */}
                       <div className="md:col-span-1 flex items-center gap-2">
                         <span className="text-xs font-mono font-bold text-slate-500">
                           #{index + 1}
@@ -276,7 +393,6 @@ export const ManageModal: React.FC<ManageModalProps> = ({
                         />
                       </div>
 
-                      {/* Name */}
                       <div className="md:col-span-3">
                         <label className="text-[10px] text-slate-400 uppercase font-semibold block mb-0.5">
                           Tên Quầy
@@ -289,7 +405,6 @@ export const ManageModal: React.FC<ManageModalProps> = ({
                         />
                       </div>
 
-                      {/* URL */}
                       <div className="md:col-span-5">
                         <label className="text-[10px] text-slate-400 uppercase font-semibold block mb-0.5">
                           Link URL QMS
@@ -313,13 +428,12 @@ export const ManageModal: React.FC<ManageModalProps> = ({
                         </div>
                       </div>
 
-                      {/* Scale & Actions */}
                       <div className="md:col-span-3 flex items-center justify-between gap-2 mt-2 md:mt-4">
                         <div>
                           <select
                             value={item.scale}
                             onChange={(e) => handleUpdateItem(item.id, { scale: parseFloat(e.target.value) })}
-                            className="bg-slate-900 border border-slate-700 text-slate-300 text-xs rounded-md px-2 py-1 outline-none focus:border-sky-500"
+                            className="bg-slate-900 border border-slate-700 text-slate-300 text-xs rounded-md px-2 py-1 outline-none focus:border-sky-500 font-mono"
                           >
                             {SCALE_OPTIONS.map((opt) => (
                               <option key={opt.value} value={opt.value}>
@@ -346,18 +460,17 @@ export const ManageModal: React.FC<ManageModalProps> = ({
             </>
           )}
 
-          {/* TAB 2: RULES & THRESHOLDS */}
+          {/* TAB 3: RULES & THRESHOLDS */}
           {activeTab === 'rules' && (
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Rule 1: Max Waiting Per Counter */}
                 <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60 space-y-3">
                   <div className="flex items-center gap-2.5 text-sky-400 font-semibold text-sm">
                     <FontAwesomeIcon icon={faDesktop} />
                     <h3>1. Tải Trọng Quầy (Khách / Quầy)</h3>
                   </div>
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    Số lượng khách chờ tối đa cho phép trên mỗi quầy đang phục vụ. Khi vượt ngưỡng, hệ thống sẽ cảnh báo mở thêm quầy.
+                    Số lượng khách chờ tối đa trên mỗi quầy đang phục vụ. Khi vượt ngưỡng, hệ thống sẽ cảnh báo mở thêm quầy.
                   </p>
                   <div className="flex items-center gap-3 pt-1">
                     <input
@@ -374,7 +487,6 @@ export const ManageModal: React.FC<ManageModalProps> = ({
                   </div>
                 </div>
 
-                {/* Rule 2: NT1 vs NT2 Imbalance */}
                 <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60 space-y-3">
                   <div className="flex items-center gap-2.5 text-amber-400 font-semibold text-sm">
                     <FontAwesomeIcon icon={faScaleBalanced} />
@@ -398,7 +510,6 @@ export const ManageModal: React.FC<ManageModalProps> = ({
                   </div>
                 </div>
 
-                {/* Rule 3: Congestion Threshold */}
                 <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60 space-y-3">
                   <div className="flex items-center gap-2.5 text-rose-400 font-semibold text-sm">
                     <FontAwesomeIcon icon={faTriangleExclamation} />
@@ -422,7 +533,6 @@ export const ManageModal: React.FC<ManageModalProps> = ({
                   </div>
                 </div>
 
-                {/* Sound Settings & Simulator */}
                 <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60 space-y-3">
                   <div className="flex items-center gap-2.5 text-emerald-400 font-semibold text-sm">
                     <FontAwesomeIcon icon={faVolumeHigh} />
@@ -455,7 +565,7 @@ export const ManageModal: React.FC<ManageModalProps> = ({
                     onClick={() => handleTestSound('danger')}
                     className="px-3 py-1.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs font-semibold rounded-lg border border-rose-500/30 transition flex items-center gap-1.5"
                   >
-                    <FontAwesomeIcon icon={faTriangleExclamation} /> Chuông Quá Tải (Khẩn cấp)
+                    <FontAwesomeIcon icon={faTriangleExclamation} /> Chuông Quá Tải
                   </button>
                   <button
                     onClick={() => handleTestSound('imbalance')}
@@ -480,7 +590,7 @@ export const ManageModal: React.FC<ManageModalProps> = ({
             <div>
               <p className="font-semibold text-white">An toàn & Bảo mật Nội bộ:</p>
               <p className="text-slate-400 mt-0.5">
-                Toàn bộ cấu hình và dữ liệu xử lý trực tiếp tại máy tính CSKH, không ghi nhận thêm traffic lạ lên hệ thống mạng của bệnh viện.
+                Cấu hình được lưu trữ an toàn trong máy tính, bảo vệ bằng mật khẩu <strong>PhongCSKH@</strong>.
               </p>
             </div>
           </div>
