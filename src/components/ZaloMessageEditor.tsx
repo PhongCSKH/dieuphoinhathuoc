@@ -155,9 +155,14 @@ export const ZaloMessageEditor: React.FC<ZaloMessageEditorProps> = ({
     handleUpdateZalo({ mentionMembers: newMembers });
   };
 
+  // Định dạng IN HOA đoạn bôi đen hoặc chèn tag [upper]
+  const handleUppercaseSelection = () => {
+    wrapSelectionWithTag('[upper]', '[/upper]');
+  };
+
   // Xóa toàn bộ các thẻ định dạng trong ô soạn thảo
   const handleClearAllTags = () => {
-    const clean = (zalo.messageTemplate || '').replace(/\[\/?(b|i|u|s|big|small|color)(?:=[^\]]+)?\]/gi, '');
+    const clean = (zalo.messageTemplate || '').replace(/\[\/?(b|i|u|s|big|small|color|upper)(?:=[^\]]+)?\]/gi, '');
     handleUpdateZalo({ messageTemplate: clean, styles: [] });
   };
 
@@ -452,6 +457,19 @@ export const ZaloMessageEditor: React.FC<ZaloMessageEditorProps> = ({
           >
             <FontAwesomeIcon icon={faFont} className="text-[10px]" />
             <span>Nhỏ (f_13)</span>
+          </button>
+
+          <span className="w-px h-5 bg-slate-800 mx-1" />
+
+          {/* In hoa (Uppercase) */}
+          <button
+            type="button"
+            onClick={handleUppercaseSelection}
+            className="px-2.5 py-1 bg-sky-950/70 hover:bg-sky-900 text-sky-300 rounded text-xs font-black transition border border-sky-800/80 flex items-center gap-1.5 shadow-sm"
+            title="Định dạng IN HOA đoạn bôi đen hoặc biến số ([upper]...[/upper])"
+          >
+            <span className="font-mono text-xs font-black tracking-wider">AA</span>
+            <span className="text-[11px] font-bold">In hoa</span>
           </button>
 
           <span className="w-px h-5 bg-slate-800 mx-1" />

@@ -224,6 +224,56 @@ export const DEFAULT_SCENARIOS: AlertScenario[] = [
       ],
     },
   },
+  {
+    id: 'scenario-test-connection',
+    name: 'Kiểm tra kết nối & Tin thử nghiệm (Test Bot)',
+    enabled: true,
+    type: 'test_connection',
+    severity: 'info',
+    thresholds: {
+      value: 0,
+    },
+    sound: {
+      enabled: false,
+      type: 'success',
+    },
+    zalo: {
+      enabled: true,
+      urgency: 0, // Bình thường
+      cooldownMinutes: 0,
+      mentionMembers: [],
+      messageTemplate: '[color=#0068ff][b]🔔 [THỬ NGHIỆM - ĐIỀU PHỐI NHÀ THUỐC][/b][/color]\n• Kết nối: Thành công giữa Web Điều Phối và Zalo\n• Tình trạng: Hệ thống giám sát tự động hoạt động bình thường\n• Người nhận: {tag_nhan_su}\n• Thời gian: {gio_hien_tai}',
+      styles: [
+        { start: 0, len: 45, st: 'c_0068ff' },
+        { start: 0, len: 45, st: 'b' },
+      ],
+    },
+  },
+  {
+    id: 'scenario-hospital-summary',
+    name: 'Báo cáo tổng hợp hiện trạng các quầy (Toàn viện)',
+    enabled: true,
+    type: 'hospital_summary',
+    severity: 'info',
+    thresholds: {
+      value: 0,
+    },
+    sound: {
+      enabled: false,
+      type: 'success',
+    },
+    zalo: {
+      enabled: true,
+      urgency: 1, // Quan trọng
+      cooldownMinutes: 5,
+      mentionMembers: [],
+      messageTemplate: '[color=#0068ff][b]📊 [BÁO CÁO ĐIỀU PHỐI - TOÀN BỆNH VIỆN][/b][/color]\n• Tổng khách chờ: {tong_khach_cho} người\n• Tổng quầy mở: {tong_quay_mo} quầy\n📋 Hiện trạng chi tiết:\n{tong_quan_cac_quay}\n• Thời gian: {gio_hien_tai}',
+      styles: [
+        { start: 0, len: 45, st: 'c_0068ff' },
+        { start: 0, len: 45, st: 'b' },
+      ],
+    },
+  },
 ];
 
 export const DEFAULT_RULES: DispatchRules = {

@@ -13,12 +13,7 @@ import { compileZaloMessage } from './utils/zaloTextCompiler';
 import { soundManager } from './utils/audio';
 import { 
   dispatchZaloAlert, 
-  formatZaloOverloadAlert, 
-  formatZaloReinforcedAlert,
   formatZaloResolvedAlert,
-  formatZaloImbalanceAlert,
-  formatZaloNoCounterAlert,
-  formatZaloLowTrafficAlert,
 } from './utils/zalo';
 
 export const App: React.FC = () => {
@@ -251,8 +246,13 @@ export const App: React.FC = () => {
           soundManager.play(soundType);
         }
 
-        // Tự động chuyển tiếp cảnh báo đến Zalo cá nhân / nhóm với Rich Text Style, Màu Sắc & Tag Nhân Sự
+        // Tự động chuyển tiếp cảnh báo đến Zalo cá nhân / nhóm theo đúng Kịch Bản của Admin
         for (const alert of newAlerts) {
+          if (alert.pharmacyId && (alert.type === 'overload' || alert.type === 'no_counter')) {
+            prevOverloadedPhsRef.current.add(alert.pharmacyId);
+          }
+
+          // Chỉ gửi tin nhắn khi kịch bản được kích hoạt và BẬT gửi Zalo
           if (alert.zaloPayload) {
             dispatchZaloAlert({
               alertKey: alert.id,
@@ -261,92 +261,6 @@ export const App: React.FC = () => {
               urgency: alert.zaloPayload.urgency,
               mentions: alert.zaloPayload.mentions,
               forceSend: alert.type === 'reinforced' || alert.type === 'low_traffic',
-            });
-            if (alert.pharmacyId && (alert.type === 'overload' || alert.type === 'no_counter')) {
-              prevOverloadedPhsRef.current.add(alert.pharmacyId);
-            }
-          } else if (alert.type === 'overload') {
-            const ph = updatedList.find((p) => p.id === alert.pharmacyId);
-            const formatted = formatZaloOverloadAlert({
-              pharmacyName: alert.pharmacyName || ph?.name || 'Nhà thuốc',
-              waitingCount: alert.metadata?.waitingCount ?? (ph?.stats?.waitingCount || 0),
-              activeCounters: ph?.stats?.activeCounters || [],
-              threshold: rules.maxWaitingPerCounter,
-            });
-            dispatchZaloAlert({
-              alertKey: alert.id,
-              message: formatted.text,
-              styles: formatted.styles,
-              urgency: formatted.urgency,
-            });
-            if (alert.pharmacyId) {
-              prevOverloadedPhsRef.current.add(alert.pharmacyId);
-            }
-          } else if (alert.type === 'reinforced') {
-            const ph = updatedList.find((p) => p.id === alert.pharmacyId);
-            const formatted = formatZaloReinforcedAlert({
-              pharmacyName: alert.pharmacyName || ph?.name || 'Nhà thuốc',
-              addedCounters: alert.metadata?.addedCounters || [],
-              totalCounters: alert.metadata?.totalCounters || ph?.stats?.activeCounters.length || 0,
-              initialCounterCount: alert.metadata?.initialCounterCount || 0,
-              waitingCount: alert.metadata?.waitingCount ?? (ph?.stats?.waitingCount || 0),
-            });
-            dispatchZaloAlert({
-              alertKey: alert.id,
-              message: formatted.text,
-              styles: formatted.styles,
-              urgency: formatted.urgency,
-              forceSend: true,
-            });
-          } else if (alert.type === 'no_counter') {
-            const ph = updatedList.find((p) => p.id === alert.pharmacyId);
-            const formatted = formatZaloNoCounterAlert({
-              pharmacyName: alert.pharmacyName || ph?.name || 'Nhà thuốc',
-              waitingCount: alert.metadata?.waitingCount ?? (ph?.stats?.waitingCount || 0),
-            });
-            dispatchZaloAlert({
-              alertKey: alert.id,
-              message: formatted.text,
-              styles: formatted.styles,
-              urgency: formatted.urgency,
-            });
-            if (alert.pharmacyId) {
-              prevOverloadedPhsRef.current.add(alert.pharmacyId);
-            }
-          } else if (alert.type === 'imbalance') {
-            const nt1 = updatedList.find((p) => p.code === 'NT1') || updatedList[0];
-            const nt2 = updatedList.find((p) => p.code === 'NT2') || updatedList[1];
-            const w1 = nt1?.stats?.waitingCount || 0;
-            const w2 = nt2?.stats?.waitingCount || 0;
-            const heavier = w1 >= w2 ? nt1 : nt2;
-            const lighter = w1 >= w2 ? nt2 : nt1;
-            const formatted = formatZaloImbalanceAlert({
-              heavierName: heavier?.name,
-              lighterName: lighter?.name,
-              heavierCount: Math.max(w1, w2),
-              lighterCount: Math.min(w1, w2),
-              diff: Math.abs(w1 - w2),
-              threshold: rules.maxImbalanceNT1NT2,
-            });
-            dispatchZaloAlert({
-              alertKey: alert.id,
-              message: formatted.text,
-              styles: formatted.styles,
-              urgency: formatted.urgency,
-            });
-          } else if (alert.type === 'low_traffic') {
-            const ph = updatedList.find((p) => p.id === alert.pharmacyId);
-            const formatted = formatZaloLowTrafficAlert({
-              pharmacyName: alert.pharmacyName || ph?.name || 'Nhà thuốc',
-              waitingCount: alert.metadata?.waitingCount ?? (ph?.stats?.waitingCount || 0),
-              counterCount: alert.metadata?.totalCounters ?? (ph?.stats?.activeCounters.length || 0),
-            });
-            dispatchZaloAlert({
-              alertKey: alert.id,
-              message: formatted.text,
-              styles: formatted.styles,
-              urgency: formatted.urgency,
-              forceSend: true,
             });
           }
         }

@@ -575,7 +575,9 @@ export const ManageModal: React.FC<ManageModalProps> = ({
           )}
 
           {/* TAB 4: CẢNH BÁO QUA ZALO */}
-          {activeTab === 'zalo' && <ZaloSettingsTab />}
+          {activeTab === 'zalo' && (
+            <ZaloSettingsTab scenarios={localRules.scenarios} pharmacies={list} />
+          )}
         </main>
       </div>
     </div>

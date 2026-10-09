@@ -112,16 +112,18 @@ export function parseInlineTagsToZaloStyles(textWithTags: string): {
   let plainText = '';
   const styles: ZaloStyleItem[] = [];
   const openStack: TagOpenInfo[] = [];
+  let upperCount = 0;
 
-  // Regex bắt các tag mở và đóng: [b], [/b], [color=...], [/color], v.v.
-  const tagRegex = /\[(\/)?(b|i|u|s|big|small|color)(?:=([^\]]+))?\]/gi;
+  // Regex bắt các tag mở và đóng: [b], [/b], [color=...], [/color], [upper], [/upper], v.v.
+  const tagRegex = /\[(\/)?(b|i|u|s|big|small|color|upper)(?:=([^\]]+))?\]/gi;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
   while ((match = tagRegex.exec(textWithTags)) !== null) {
     // 1. Ký tự thường trước tag
-    const textBefore = textWithTags.substring(lastIndex, match.index);
-    if (textBefore.length > 0) {
+    const rawBefore = textWithTags.substring(lastIndex, match.index);
+    if (rawBefore.length > 0) {
+      const textBefore = upperCount > 0 ? rawBefore.toLocaleUpperCase('vi-VN') : rawBefore;
       plainText += textBefore;
     }
     lastIndex = tagRegex.lastIndex;
@@ -131,6 +133,9 @@ export function parseInlineTagsToZaloStyles(textWithTags: string): {
     const attr = match[3];
 
     if (!isClose) {
+      if (tagName === 'upper') {
+        upperCount++;
+      }
       // Tag mở: đẩy vào stack kèm vị trí bắt đầu trong plainText
       openStack.push({
         tag: tagName,
@@ -138,6 +143,9 @@ export function parseInlineTagsToZaloStyles(textWithTags: string): {
         startInPlain: plainText.length,
       });
     } else {
+      if (tagName === 'upper') {
+        upperCount = Math.max(0, upperCount - 1);
+      }
       // Tag đóng: tìm tag mở tương ứng gần nhất
       const foundIdx = openStack.map((o) => o.tag).lastIndexOf(tagName);
       if (foundIdx !== -1) {
@@ -176,7 +184,8 @@ export function parseInlineTagsToZaloStyles(textWithTags: string): {
 
   // Thêm phần còn lại sau tag cuối cùng
   if (lastIndex < textWithTags.length) {
-    plainText += textWithTags.substring(lastIndex);
+    const rawTrailing = textWithTags.substring(lastIndex);
+    plainText += upperCount > 0 ? rawTrailing.toLocaleUpperCase('vi-VN') : rawTrailing;
   }
 
   return { plainText, styles };
@@ -298,7 +307,7 @@ export function compileZaloMessage(
 export function renderFormattedPreview(textWithTags: string): React.ReactNode {
   // Thay thế tags thành cấu trúc React
   const parts: React.ReactNode[] = [];
-  const tagRegex = /\[(\/)?(b|i|u|s|big|small|color)(?:=([^\]]+))?\]/gi;
+  const tagRegex = /\[(\/)?(b|i|u|s|big|small|color|upper)(?:=([^\]]+))?\]/gi;
   let lastIdx = 0;
   let match: RegExpExecArray | null;
 
@@ -307,6 +316,7 @@ export function renderFormattedPreview(textWithTags: string): React.ReactNode {
     i: boolean;
     u: boolean;
     s: boolean;
+    upper: boolean;
     size: 'normal' | 'big' | 'small';
     color?: string;
   }
@@ -316,6 +326,7 @@ export function renderFormattedPreview(textWithTags: string): React.ReactNode {
     i: false,
     u: false,
     s: false,
+    upper: false,
     size: 'normal',
   };
 
@@ -323,9 +334,11 @@ export function renderFormattedPreview(textWithTags: string): React.ReactNode {
 
   const addTextChunk = (chunk: string) => {
     if (!chunk) return;
+    const chunkText = currentStyle.upper ? chunk.toLocaleUpperCase('vi-VN') : chunk;
     const styleObj: React.CSSProperties = {
       fontWeight: currentStyle.b ? 'bold' : 'normal',
       fontStyle: currentStyle.i ? 'italic' : 'normal',
+      textTransform: currentStyle.upper ? 'uppercase' : 'none',
       textDecoration: [
         currentStyle.u ? 'underline' : '',
         currentStyle.s ? 'line-through' : '',
@@ -342,7 +355,7 @@ export function renderFormattedPreview(textWithTags: string): React.ReactNode {
     };
 
     parts.push(
-      React.createElement('span', { key: parts.length, style: styleObj }, chunk)
+      React.createElement('span', { key: parts.length, style: styleObj }, chunkText)
     );
   };
 
@@ -361,6 +374,7 @@ export function renderFormattedPreview(textWithTags: string): React.ReactNode {
       if (tagName === 'i') currentStyle.i = true;
       if (tagName === 'u') currentStyle.u = true;
       if (tagName === 's') currentStyle.s = true;
+      if (tagName === 'upper') currentStyle.upper = true;
       if (tagName === 'big') currentStyle.size = 'big';
       if (tagName === 'small') currentStyle.size = 'small';
       if (tagName === 'color' && attr) {

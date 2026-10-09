@@ -43,7 +43,7 @@ export interface AlertScenario {
   id: string;
   name: string;
   enabled: boolean;
-  type: 'overload' | 'no_counter' | 'imbalance' | 'crowded' | 'reinforced' | 'low_traffic';
+  type: 'overload' | 'no_counter' | 'imbalance' | 'crowded' | 'reinforced' | 'low_traffic' | 'test_connection' | 'hospital_summary';
   severity: 'danger' | 'warning' | 'info';
   thresholds: {
     value: number; // Ngưỡng chính (vd: 3 khách/quầy, 2 khách lệch, 5 khách đông)
@@ -77,7 +77,7 @@ export interface DispatchRules {
 export interface DispatchAlert {
   id: string;
   scenarioId?: string;
-  type: 'overload' | 'crowded' | 'imbalance' | 'no_counter' | 'new_counter' | 'reinforced' | 'low_traffic';
+  type: 'overload' | 'crowded' | 'imbalance' | 'no_counter' | 'new_counter' | 'reinforced' | 'low_traffic' | 'test_connection' | 'hospital_summary';
   severity: 'danger' | 'warning' | 'info';
   pharmacyId?: string;
   pharmacyName?: string;

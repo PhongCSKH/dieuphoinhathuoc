@@ -14,17 +14,25 @@ import {
   faTriangleExclamation,
   faPlus
 } from '@fortawesome/free-solid-svg-icons';
-import { ZaloStatus, ZaloAlertConfig, ZaloContact } from '../types';
+import { ZaloStatus, ZaloAlertConfig, ZaloContact, AlertScenario, PharmacyScreen } from '../types';
 import { 
   fetchZaloStatus, 
   requestZaloQR, 
   logoutZalo, 
   fetchZaloContacts, 
   updateZaloConfig, 
-  triggerTestZalo 
+  triggerTestZalo,
+  dispatchZaloAlert,
 } from '../utils/zalo';
+import { compileZaloMessage } from '../utils/zaloTextCompiler';
+import { buildAllVariables } from '../utils/dispatchEngine';
 
-export const ZaloSettingsTab: React.FC = () => {
+interface ZaloSettingsTabProps {
+  scenarios?: AlertScenario[];
+  pharmacies?: PharmacyScreen[];
+}
+
+export const ZaloSettingsTab: React.FC<ZaloSettingsTabProps> = ({ scenarios, pharmacies }) => {
   const [status, setStatus] = useState<ZaloStatus | null>(null);
   const [contacts, setContacts] = useState<{ self: ZaloContact; groups: ZaloContact[]; friends: ZaloContact[] } | null>(null);
   const [isLoadingQR, setIsLoadingQR] = useState(false);
@@ -127,6 +135,37 @@ export const ZaloSettingsTab: React.FC = () => {
 
     setIsSendingTest(true);
     setTestResult(null);
+
+    const testScenario = scenarios?.find((s) => s.type === 'test_connection');
+    if (testScenario && testScenario.enabled && testScenario.zalo?.enabled) {
+      const primaryPh = pharmacies && pharmacies.length > 0 ? pharmacies[0] : undefined;
+      const allVars = buildAllVariables(primaryPh, pharmacies || [], {
+        thoi_gian: 60,
+      });
+      const compiled = compileZaloMessage(
+        testScenario.zalo.messageTemplate,
+        allVars,
+        testScenario.zalo.mentionMembers,
+        testScenario.zalo.styles
+      );
+      const res = await dispatchZaloAlert({
+        alertKey: `test-conn-${Date.now()}`,
+        message: compiled.message,
+        styles: compiled.styles,
+        urgency: testScenario.zalo.urgency,
+        mentions: compiled.mentions,
+        forceSend: true,
+      });
+      setIsSendingTest(false);
+      setTestResult({
+        success: res.success,
+        message: res.success
+          ? `Đã gửi tin thử nghiệm thành công theo Kịch bản: "${testScenario.name}"!`
+          : (res.reason || 'Lỗi gửi tin qua Zalo Bridge'),
+      });
+      return;
+    }
+
     const res = await triggerTestZalo();
     setIsSendingTest(false);
     setTestResult(res);
