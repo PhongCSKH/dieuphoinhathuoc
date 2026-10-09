@@ -31,7 +31,7 @@ export interface DispatchRules {
 
 export interface DispatchAlert {
   id: string;
-  type: 'overload' | 'imbalance' | 'no_counter' | 'new_counter' | 'reinforced' | 'low_traffic';
+  type: 'overload' | 'crowded' | 'imbalance' | 'no_counter' | 'new_counter' | 'reinforced' | 'low_traffic';
   severity: 'danger' | 'warning' | 'info';
   pharmacyId?: string;
   pharmacyName?: string;

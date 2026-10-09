@@ -299,9 +299,13 @@ export const App: React.FC = () => {
             const nt2 = updatedList.find((p) => p.code === 'NT2') || updatedList[1];
             const w1 = nt1?.stats?.waitingCount || 0;
             const w2 = nt2?.stats?.waitingCount || 0;
+            const heavier = w1 >= w2 ? nt1 : nt2;
+            const lighter = w1 >= w2 ? nt2 : nt1;
             const formatted = formatZaloImbalanceAlert({
-              nt1Waiting: w1,
-              nt2Waiting: w2,
+              heavierName: heavier?.name,
+              lighterName: lighter?.name,
+              heavierCount: Math.max(w1, w2),
+              lighterCount: Math.min(w1, w2),
               diff: Math.abs(w1 - w2),
               threshold: rules.maxImbalanceNT1NT2,
             });
@@ -323,6 +327,7 @@ export const App: React.FC = () => {
               message: formatted.text,
               styles: formatted.styles,
               urgency: formatted.urgency,
+              forceSend: true,
             });
           }
         }
@@ -334,7 +339,8 @@ export const App: React.FC = () => {
           );
           if (!isStillOverloaded) {
             const ph = updatedList.find((p) => p.id === pharmacyId);
-            if (ph) {
+            // Chỉ gửi thông báo hạ tải khi nhà thuốc đang có quầy phục vụ
+            if (ph && (ph.stats?.activeCounters.length || 0) > 0) {
               const formatted = formatZaloResolvedAlert({
                 pharmacyName: ph.name,
                 waitingCount: ph.stats?.waitingCount || 0,
@@ -346,6 +352,7 @@ export const App: React.FC = () => {
                 styles: formatted.styles,
                 urgency: formatted.urgency,
                 isResolved: true,
+                forceSend: true,
               });
             }
             prevOverloadedPhsRef.current.delete(pharmacyId);

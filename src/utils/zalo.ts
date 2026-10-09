@@ -215,18 +215,22 @@ export function formatZaloResolvedAlert(params: {
  * Màu Cam, In Đậm
  */
 export function formatZaloImbalanceAlert(params: {
-  nt1Waiting: number;
-  nt2Waiting: number;
+  heavierName?: string;
+  lighterName?: string;
+  heavierCount?: number;
+  lighterCount?: number;
+  nt1Waiting?: number;
+  nt2Waiting?: number;
   diff: number;
-  threshold: number;
+  threshold?: number;
 }): ZaloFormattedMessage {
   const timeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const title = `[LỆCH TẢI - NHÀ THUỐC 1 & 2]`;
-  const isNt1Higher = params.nt1Waiting > params.nt2Waiting;
-  const heavierName = isNt1Higher ? 'Nhà Thuốc 1' : 'Nhà Thuốc 2';
-  const lighterName = isNt1Higher ? 'Nhà Thuốc 2' : 'Nhà Thuốc 1';
-  const heavierCount = Math.max(params.nt1Waiting, params.nt2Waiting);
-  const lighterCount = Math.min(params.nt1Waiting, params.nt2Waiting);
+  const isNt1Higher = (params.nt1Waiting ?? 0) >= (params.nt2Waiting ?? 0);
+  const heavierName = params.heavierName || (isNt1Higher ? 'Nhà Thuốc 1' : 'Nhà Thuốc 2');
+  const lighterName = params.lighterName || (isNt1Higher ? 'Nhà Thuốc 2' : 'Nhà Thuốc 1');
+  const heavierCount = params.heavierCount ?? Math.max(params.nt1Waiting ?? 0, params.nt2Waiting ?? 0);
+  const lighterCount = params.lighterCount ?? Math.min(params.nt1Waiting ?? 0, params.nt2Waiting ?? 0);
 
   const text = `${title}\n` +
     `• ${heavierName}: ${heavierCount} khách chờ (Đông hơn)\n` +

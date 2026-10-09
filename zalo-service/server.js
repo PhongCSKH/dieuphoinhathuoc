@@ -440,6 +440,12 @@ app.post('/api/send-alert', async (req, res) => {
     if (alertKey) {
       if (isResolved) {
         alertHistory.delete(alertKey);
+        const resolvedMatch = alertKey.match(/resolved-(.+)/);
+        if (resolvedMatch) {
+          const phId = resolvedMatch[1];
+          alertHistory.delete(`overload-${phId}`);
+          alertHistory.delete(`no-counter-${phId}`);
+        }
         console.log(`[Zalo Service] Đã hạ tải và giải phóng cảnh báo [${alertKey}]`);
       } else {
         alertHistory.set(alertKey, { timestamp: now, message });
