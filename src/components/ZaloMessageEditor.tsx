@@ -6,11 +6,9 @@ import {
   faUnderline,
   faStrikethrough,
   faPalette,
-  faFont,
   faBell,
   faCircleExclamation,
   faAt,
-  faEye,
   faTrashCan,
   faCheck,
   faPlus,
@@ -39,7 +37,6 @@ export const ZaloMessageEditor: React.FC<ZaloMessageEditorProps> = ({
   const [selectedColor, setSelectedColor] = useState<string>('#db342e');
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showMemberDropdown, setShowMemberDropdown] = useState(false);
-  const [previewTab, setPreviewTab] = useState<'editor' | 'preview'>('editor');
   const [variableGroupFilter, setVariableGroupFilter] = useState<'all' | 'current' | 'dispatch' | 'system'>('current');
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -372,122 +369,96 @@ export const ZaloMessageEditor: React.FC<ZaloMessageEditorProps> = ({
       {/* 3. Soạn Thảo Tin Nhắn & Rich Text Toolbar */}
       <div className="p-3.5 bg-slate-900/80 border border-slate-800 rounded-xl space-y-3">
         <div className="flex items-center justify-between">
-          <label className="text-xs font-semibold text-slate-300">
+          <label className="text-xs font-bold text-slate-200">
             Nội dung mẫu tin nhắn Zalo:
           </label>
-          <div className="flex items-center gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-800">
-            <button
-              type="button"
-              onClick={() => setPreviewTab('editor')}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md transition ${
-                previewTab === 'editor'
-                  ? 'bg-sky-600 text-white'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Soạn thảo
-            </button>
-            <button
-              type="button"
-              onClick={() => setPreviewTab('preview')}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md transition flex items-center gap-1.5 ${
-                previewTab === 'preview'
-                  ? 'bg-sky-600 text-white'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <FontAwesomeIcon icon={faEye} className="text-xs" />
-              <span>Xem trước Zalo</span>
-            </button>
-          </div>
+          <span className="text-[10px] text-slate-500 italic">Xem trước tự động cập nhật bên dưới</span>
         </div>
 
-        {/* Toolbar: Áp dụng trực tiếp vào đoạn văn bản bôi đen ở mọi dòng */}
-        <div className="flex flex-wrap items-center gap-1.5 p-2 bg-slate-950 rounded-lg border border-slate-800">
+        {/* Toolbar: Tinh gọn, chỉ dùng biểu tượng, không chữ dài dòng */}
+        <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-slate-950 rounded-lg border border-slate-800">
           <button
             type="button"
             onClick={() => wrapSelectionWithTag('[b]', '[/b]')}
-            className="p-1.5 px-2.5 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded text-xs font-bold transition border border-slate-800"
-            title="In đậm đoạn bôi đen (kể cả biến)"
+            className="w-7 h-7 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded text-xs font-black transition border border-slate-800 flex items-center justify-center"
+            title="In đậm [B]"
           >
             <FontAwesomeIcon icon={faBold} />
           </button>
           <button
             type="button"
             onClick={() => wrapSelectionWithTag('[i]', '[/i]')}
-            className="p-1.5 px-2.5 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded text-xs italic transition border border-slate-800"
-            title="In nghiêng đoạn bôi đen"
+            className="w-7 h-7 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded text-xs italic transition border border-slate-800 flex items-center justify-center"
+            title="In nghiêng [I]"
           >
             <FontAwesomeIcon icon={faItalic} />
           </button>
           <button
             type="button"
             onClick={() => wrapSelectionWithTag('[u]', '[/u]')}
-            className="p-1.5 px-2.5 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded text-xs underline transition border border-slate-800"
-            title="Gạch chân đoạn bôi đen"
+            className="w-7 h-7 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded text-xs underline transition border border-slate-800 flex items-center justify-center"
+            title="Gạch chân [U]"
           >
             <FontAwesomeIcon icon={faUnderline} />
           </button>
           <button
             type="button"
             onClick={() => wrapSelectionWithTag('[s]', '[/s]')}
-            className="p-1.5 px-2.5 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded text-xs line-through transition border border-slate-800"
-            title="Gạch ngang đoạn bôi đen"
+            className="w-7 h-7 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded text-xs line-through transition border border-slate-800 flex items-center justify-center"
+            title="Gạch ngang [S]"
           >
             <FontAwesomeIcon icon={faStrikethrough} />
           </button>
 
-          <span className="w-px h-5 bg-slate-800 mx-1" />
-
-          {/* Font size */}
-          <button
-            type="button"
-            onClick={() => wrapSelectionWithTag('[big]', '[/big]')}
-            className="px-2 py-1 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded text-xs font-bold transition border border-slate-800 flex items-center gap-1"
-            title="Cỡ chữ lớn (Tiêu đề f_18)"
-          >
-            <FontAwesomeIcon icon={faFont} className="text-sm" />
-            <span>Lớn (f_18)</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => wrapSelectionWithTag('[small]', '[/small]')}
-            className="px-2 py-1 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded text-xs transition border border-slate-800 flex items-center gap-1"
-            title="Cỡ chữ nhỏ (Ghi chú f_13)"
-          >
-            <FontAwesomeIcon icon={faFont} className="text-[10px]" />
-            <span>Nhỏ (f_13)</span>
-          </button>
-
-          <span className="w-px h-5 bg-slate-800 mx-1" />
+          <span className="w-px h-4 bg-slate-800 mx-0.5" />
 
           {/* In hoa (Uppercase) */}
           <button
             type="button"
             onClick={handleUppercaseSelection}
-            className="px-2.5 py-1 bg-sky-950/70 hover:bg-sky-900 text-sky-300 rounded text-xs font-black transition border border-sky-800/80 flex items-center gap-1.5 shadow-sm"
-            title="Định dạng IN HOA đoạn bôi đen hoặc biến số ([upper]...[/upper])"
+            className="px-2 h-7 bg-sky-950/60 hover:bg-sky-900 text-sky-300 rounded text-xs font-black transition border border-sky-800/80 flex items-center justify-center tracking-wider"
+            title="IN HOA [AA]"
           >
-            <span className="font-mono text-xs font-black tracking-wider">AA</span>
-            <span className="text-[11px] font-bold">In hoa</span>
+            <span className="font-mono text-xs font-black">AA</span>
           </button>
 
-          <span className="w-px h-5 bg-slate-800 mx-1" />
+          <span className="w-px h-4 bg-slate-800 mx-0.5" />
+
+          {/* Font size */}
+          <button
+            type="button"
+            onClick={() => wrapSelectionWithTag('[big]', '[/big]')}
+            className="px-1.5 h-7 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded text-xs font-bold transition border border-slate-800 flex items-center justify-center gap-0.5"
+            title="Cỡ chữ lớn (Tiêu đề [big])"
+          >
+            <span className="font-black text-xs">A</span>
+            <span className="text-[10px] text-sky-400 font-black">▲</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => wrapSelectionWithTag('[small]', '[/small]')}
+            className="px-1.5 h-7 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded text-xs transition border border-slate-800 flex items-center justify-center gap-0.5"
+            title="Cỡ chữ nhỏ (Ghi chú [small])"
+          >
+            <span className="font-semibold text-[11px]">a</span>
+            <span className="text-[10px] text-slate-400 font-bold">▼</span>
+          </button>
+
+          <span className="w-px h-4 bg-slate-800 mx-0.5" />
 
           {/* Color palette */}
           <div className="relative">
             <button
               type="button"
               onClick={() => setShowColorPicker(!showColorPicker)}
-              className="px-2 py-1 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded text-xs transition border border-slate-800 flex items-center gap-1.5"
-              title="Đổi màu sắc cho đoạn bôi đen"
+              className="px-2 h-7 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded text-xs transition border border-slate-800 flex items-center justify-center gap-1.5"
+              title="Chọn màu chữ Zalo"
             >
               <div
                 className="w-3.5 h-3.5 rounded-full border border-white/20 shadow-sm"
                 style={{ backgroundColor: selectedColor }}
               />
               <FontAwesomeIcon icon={faPalette} className="text-xs" />
-              <span>Màu chữ</span>
             </button>
 
             {showColorPicker && (
@@ -614,25 +585,35 @@ export const ZaloMessageEditor: React.FC<ZaloMessageEditorProps> = ({
           </div>
         </div>
 
-        {/* Content View: Editor or Live Preview */}
-        {previewTab === 'editor' ? (
-          <div className="space-y-1">
-            <textarea
-              ref={textareaRef}
-              rows={6}
-              value={zalo.messageTemplate || ''}
-              onChange={(e) => handleUpdateZalo({ messageTemplate: e.target.value })}
-              placeholder="Nhập nội dung tin nhắn. Bôi đen văn bản rồi bấm [B], [I], hoặc Màu chữ để định dạng..."
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 font-mono leading-relaxed outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
-            />
-            <div className="text-[10px] text-slate-500 italic flex justify-between">
-              <span>Mẹo: Bạn có thể bôi đen chữ hoặc biến số bất kỳ (ở mọi dòng) rồi bấm [B] hoặc Màu chữ để định dạng.</span>
-              <span>Độ dài: {(zalo.messageTemplate || '').length} ký tự</span>
-            </div>
+        {/* Editor Box */}
+        <div className="space-y-1">
+          <textarea
+            ref={textareaRef}
+            rows={5}
+            value={zalo.messageTemplate || ''}
+            onChange={(e) => handleUpdateZalo({ messageTemplate: e.target.value })}
+            placeholder="Nhập nội dung tin nhắn. Bôi đen văn bản rồi bấm biểu tượng [B], [I], [AA] hoặc Màu chữ để định dạng..."
+            className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 font-mono leading-relaxed outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+          />
+          <div className="text-[10px] text-slate-500 italic flex justify-between">
+            <span>Mẹo: Bôi đen chữ hoặc biến số rồi bấm icon trên thanh công cụ để định dạng.</span>
+            <span>Độ dài: {(zalo.messageTemplate || '').length} ký tự</span>
           </div>
-        ) : (
-          /* Live Preview Bubble: Render chuẩn xác 100% mọi đoạn in đậm, đổi màu ở mọi dòng */
-          <div className="bg-[#eef2f8] text-slate-900 rounded-2xl p-4 shadow-md max-w-lg border border-slate-300 font-sans">
+        </div>
+
+        {/* Live Preview Box: Hiển thị ngay bên dưới, cập nhật tức thì */}
+        <div className="space-y-2 pt-2 border-t border-slate-800/80">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider flex items-center gap-1.5">
+              <span>👁️</span> Xem trước hiển thị trên Zalo (Thời gian thực):
+            </span>
+            <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              Tự động đồng bộ
+            </span>
+          </div>
+
+          <div className="bg-[#eef2f8] text-slate-900 rounded-2xl p-4 shadow-md max-w-xl border border-slate-300 font-sans">
             {/* Header Urgency badge */}
             {zalo.urgency === 2 && (
               <div className="flex items-center gap-1.5 text-rose-600 font-bold text-xs mb-2 pb-1.5 border-b border-rose-200">
@@ -653,11 +634,11 @@ export const ZaloMessageEditor: React.FC<ZaloMessageEditorProps> = ({
             </div>
 
             <div className="mt-2.5 pt-1.5 border-t border-slate-200 text-[10px] text-slate-400 flex items-center justify-between">
-              <span>Đã xem</span>
+              <span>Đã nhận</span>
               <span>Vừa xong</span>
             </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
