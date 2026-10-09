@@ -1,23 +1,41 @@
-import React, { useState } from 'react';
-import { 
-  X, 
-  Plus, 
-  Trash2, 
-  RotateCcw, 
-  Download, 
-  Upload, 
-  Check, 
-  ExternalLink,
-  ShieldAlert
-} from 'lucide-react';
-import { PharmacyScreen } from '../types';
-import { DEFAULT_PHARMACIES, SCALE_OPTIONS } from '../constants';
+import React, { useState, useEffect } from 'react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import {
+  faXmark,
+  faPlus,
+  faTrashCan,
+  faRotateLeft,
+  faDownload,
+  faUpload,
+  faCheck,
+  faArrowUpRightFromSquare,
+  faHospital,
+  faLayerGroup,
+  faTableCellsLarge,
+  faSquare,
+  faTableColumns,
+  faTableCells,
+  faMaximize,
+  faComments,
+  faSliders,
+  faFloppyDisk,
+} from '@fortawesome/free-solid-svg-icons';
+import { PharmacyScreen, DispatchRules, LayoutMode, AlertScenario } from '../types';
+import { DEFAULT_PHARMACIES, SCALE_OPTIONS, DEFAULT_SCENARIOS } from '../constants';
+import { ZaloSettingsTab } from './ZaloSettingsTab';
+import { ScenarioManagementTab } from './ScenarioManagementTab';
 
 interface ManageModalProps {
   isOpen: boolean;
   onClose: () => void;
   pharmacies: PharmacyScreen[];
   onSavePharmacies: (newPharmacies: PharmacyScreen[]) => void;
+  rules: DispatchRules;
+  onSaveRules: (newRules: DispatchRules) => void;
+  layout: LayoutMode;
+  onChangeLayout: (newLayout: LayoutMode) => void;
+  globalScale: number;
+  onChangeGlobalScale: (scale: number) => void;
 }
 
 export const ManageModal: React.FC<ManageModalProps> = ({
@@ -25,17 +43,58 @@ export const ManageModal: React.FC<ManageModalProps> = ({
   onClose,
   pharmacies,
   onSavePharmacies,
+  rules,
+  onSaveRules,
+  layout,
+  onChangeLayout,
+  globalScale,
+  onChangeGlobalScale,
 }) => {
+  const [activeTab, setActiveTab] = useState<'display' | 'pharmacies' | 'scenarios' | 'zalo'>('scenarios');
   const [list, setList] = useState<PharmacyScreen[]>(pharmacies);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [copiedNotification, setCopiedNotification] = useState<string | null>(null);
+  const [localRules, setLocalRules] = useState<DispatchRules>(() => {
+    return {
+      ...rules,
+      scenarios: rules.scenarios && rules.scenarios.length > 0 ? rules.scenarios : DEFAULT_SCENARIOS,
+    };
+  });
+  const [notification, setNotification] = useState<string | null>(null);
+
+  // Sync state khi mở modal
+  useEffect(() => {
+    if (isOpen) {
+      setList(pharmacies);
+      setLocalRules({
+        ...rules,
+        scenarios: rules.scenarios && rules.scenarios.length > 0 ? rules.scenarios : DEFAULT_SCENARIOS,
+      });
+    }
+  }, [isOpen, pharmacies, rules]);
+
+  // Phím tắt Esc và Ctrl+S
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isOpen) return;
+      if (e.key === 'Escape') {
+        onClose();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        handleSaveAndClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, list, localRules]);
 
   if (!isOpen) return null;
 
+  const showNotification = (msg: string) => {
+    setNotification(msg);
+    setTimeout(() => setNotification(null), 3000);
+  };
+
   const handleUpdateItem = (id: string, updates: Partial<PharmacyScreen>) => {
-    setList((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, ...updates } : item))
-    );
+    setList((prev) => prev.map((item) => (item.id === id ? { ...item, ...updates } : item)));
   };
 
   const handleAddNew = () => {
@@ -45,23 +104,30 @@ export const ManageModal: React.FC<ManageModalProps> = ({
       name: `Nhà thuốc ${nextNumber}`,
       code: `NT${nextNumber}`,
       url: 'https://qms.tahospital.vn/view/...',
-      scale: 0.85,
+      scale: 0.50,
       autoRefreshInterval: 0,
       notes: `Quầy phát thuốc ${nextNumber}`,
       enabled: true,
+      stats: {
+        waitingCount: 0,
+        servingCount: 0,
+        activeCounters: [],
+        lastUpdated: Date.now(),
+      },
     };
     setList([...list, newItem]);
-    setEditingId(newItem.id);
+    showNotification(`Đã thêm Nhà thuốc ${nextNumber}`);
   };
 
   const handleDelete = (id: string) => {
-    if (confirm('Bạn có chắc chắn muốn xóa quầy này khỏi màn hình theo dõi?')) {
+    if (confirm('Xóa quầy này khỏi hệ thống theo dõi?')) {
       setList(list.filter((item) => item.id !== id));
+      showNotification('Đã xóa quầy!');
     }
   };
 
   const handleResetDefaults = () => {
-    if (confirm('Khôi phục lại danh sách 4 Nhà thuốc chuẩn của Tâm Anh Hospital?')) {
+    if (confirm('Khôi phục lại danh sách 4 Nhà thuốc chuẩn của Bệnh viện Tâm Anh?')) {
       setList(DEFAULT_PHARMACIES);
       onSavePharmacies(DEFAULT_PHARMACIES);
       showNotification('Đã khôi phục 4 Nhà thuốc chuẩn!');
@@ -70,11 +136,17 @@ export const ManageModal: React.FC<ManageModalProps> = ({
 
   const handleSaveAndClose = () => {
     onSavePharmacies(list);
+    onSaveRules(localRules);
     onClose();
   };
 
   const handleExportJSON = () => {
-    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(list, null, 2));
+    const exportData = {
+      pharmacies: list,
+      rules: localRules,
+      exportedAt: new Date().toISOString(),
+    };
+    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(exportData, null, 2));
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute('href', dataStr);
     downloadAnchor.setAttribute('download', `cau_hinh_dieu_phoi_${new Date().toISOString().slice(0, 10)}.json`);
@@ -92,14 +164,20 @@ export const ManageModal: React.FC<ManageModalProps> = ({
     reader.onload = (event) => {
       try {
         const parsed = JSON.parse(event.target?.result as string);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (parsed.pharmacies && Array.isArray(parsed.pharmacies)) {
+          setList(parsed.pharmacies);
+          onSavePharmacies(parsed.pharmacies);
+          if (parsed.rules) {
+            setLocalRules(parsed.rules);
+            onSaveRules(parsed.rules);
+          }
+          showNotification('Đã nhập cấu hình thành công!');
+        } else if (Array.isArray(parsed)) {
           setList(parsed);
           onSavePharmacies(parsed);
           showNotification('Đã nhập cấu hình thành công!');
-        } else {
-          alert('File JSON không đúng định dạng!');
         }
-      } catch (err) {
+      } catch {
         alert('Không thể đọc file JSON!');
       }
     };
@@ -107,203 +185,382 @@ export const ManageModal: React.FC<ManageModalProps> = ({
     e.target.value = '';
   };
 
-  const showNotification = (msg: string) => {
-    setCopiedNotification(msg);
-    setTimeout(() => setCopiedNotification(null), 3000);
+  const handleUpdateScenarios = (newScenarios: AlertScenario[]) => {
+    setLocalRules({
+      ...localRules,
+      scenarios: newScenarios,
+    });
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-4xl max-h-[90vh] bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/90">
-          <div>
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              Quản Lý Màn Hình Điều Phối
-            </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Thêm, sửa link QMS và chỉnh tỉ lệ hiển thị cho từng nhà thuốc
-            </p>
+    <div className="fixed inset-0 z-50 w-screen h-screen bg-slate-950 flex flex-col text-slate-100 overflow-hidden animate-in fade-in duration-150">
+      {/* 1. TOP HEADER BAR */}
+      <header className="h-14 px-6 bg-slate-900 border-b border-slate-800 flex items-center justify-between flex-shrink-0 select-none">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-sky-600 flex items-center justify-center text-white font-black text-sm shadow">
+            TA
           </div>
+          <div>
+            <h1 className="text-sm font-bold text-white tracking-wide">
+              TRUNG TÂM QUẢN TRỊ ĐIỀU PHỐI NHÀ THUỐC
+            </h1>
+          </div>
+        </div>
+
+        {/* Global Header Actions */}
+        <div className="flex items-center gap-2.5">
           <button
-            onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
+            type="button"
+            onClick={handleExportJSON}
+            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold rounded-lg border border-slate-700 flex items-center gap-1.5 transition"
+            title="Xuất file JSON sao lưu cấu hình"
           >
-            <X className="w-5 h-5" />
+            <FontAwesomeIcon icon={faDownload} className="text-xs" />
+            <span>Xuất JSON</span>
+          </button>
+
+          <label className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold rounded-lg border border-slate-700 flex items-center gap-1.5 cursor-pointer transition">
+            <FontAwesomeIcon icon={faUpload} className="text-xs" />
+            <span>Nhập JSON</span>
+            <input type="file" accept=".json" onChange={handleImportJSON} className="hidden" />
+          </label>
+
+          <button
+            type="button"
+            onClick={handleSaveAndClose}
+            className="px-4 py-1.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-2 transition"
+          >
+            <FontAwesomeIcon icon={faFloppyDisk} className="text-xs" />
+            <span>Lưu Cấu Hình (Ctrl+S)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 px-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
+            title="Đóng (Esc)"
+          >
+            <FontAwesomeIcon icon={faXmark} className="text-base" />
           </button>
         </div>
+      </header>
 
-        {/* Notification Toast */}
-        {copiedNotification && (
-          <div className="bg-emerald-500/10 border-b border-emerald-500/20 px-6 py-2 text-xs font-semibold text-emerald-400 flex items-center gap-2">
-            <Check className="w-4 h-4" /> {copiedNotification}
+      {/* Toast Notification */}
+      {notification && (
+        <div className="bg-emerald-500/10 border-b border-emerald-500/20 px-6 py-2 text-xs font-semibold text-emerald-400 flex items-center gap-2 flex-shrink-0 animate-in fade-in">
+          <FontAwesomeIcon icon={faCheck} className="text-xs" /> {notification}
+        </div>
+      )}
+
+      {/* 2. BODY SPLIT: SIDEBAR LEFT + MAIN WORKSPACE RIGHT */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* SIDEBAR NAVIGATION (240px) */}
+        <aside className="w-64 bg-slate-900/70 border-r border-slate-800 flex flex-col justify-between p-3 flex-shrink-0 select-none">
+          <div className="space-y-1">
+            <button
+              type="button"
+              onClick={() => setActiveTab('scenarios')}
+              className={`w-full px-3.5 py-3 rounded-xl text-xs font-bold flex items-center justify-between transition ${
+                activeTab === 'scenarios'
+                  ? 'bg-sky-600 text-white shadow-md'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <FontAwesomeIcon icon={faSliders} className="text-sm" />
+                <span>Kịch Bản Cảnh Báo</span>
+              </div>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                activeTab === 'scenarios' ? 'bg-sky-700 text-white' : 'bg-slate-800 text-slate-400'
+              }`}>
+                {(localRules.scenarios || []).length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('pharmacies')}
+              className={`w-full px-3.5 py-3 rounded-xl text-xs font-bold flex items-center justify-between transition ${
+                activeTab === 'pharmacies'
+                  ? 'bg-sky-600 text-white shadow-md'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <FontAwesomeIcon icon={faHospital} className="text-sm" />
+                <span>Danh Sách Quầy</span>
+              </div>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                activeTab === 'pharmacies' ? 'bg-sky-700 text-white' : 'bg-slate-800 text-slate-400'
+              }`}>
+                {list.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('display')}
+              className={`w-full px-3.5 py-3 rounded-xl text-xs font-bold flex items-center gap-2.5 transition ${
+                activeTab === 'display'
+                  ? 'bg-sky-600 text-white shadow-md'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              <FontAwesomeIcon icon={faLayerGroup} className="text-sm" />
+              <span>Bố Cục & Tỉ Lệ</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('zalo')}
+              className={`w-full px-3.5 py-3 rounded-xl text-xs font-bold flex items-center gap-2.5 transition ${
+                activeTab === 'zalo'
+                  ? 'bg-sky-600 text-white shadow-md'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              <FontAwesomeIcon icon={faComments} className="text-sm" />
+              <span>Kết Nối Zalo</span>
+            </button>
           </div>
-        )}
 
-        {/* Content Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-slate-800">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleAddNew}
-                className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition shadow-sm"
-              >
-                <Plus className="w-4 h-4" /> Thêm quầy mới
-              </button>
-              <button
-                onClick={handleResetDefaults}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition border border-slate-700"
-              >
-                <RotateCcw className="w-3.5 h-3.5" /> Khôi phục 4 Quầy chuẩn
-              </button>
+          {/* Sidebar Footer Info */}
+          <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 text-[11px] space-y-1.5">
+            <div className="text-slate-400 flex justify-between">
+              <span>Số quầy trực:</span>
+              <strong className="text-white">{list.length}</strong>
             </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleExportJSON}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition border border-slate-700"
-                title="Xuất file JSON sao lưu"
-              >
-                <Download className="w-3.5 h-3.5" /> Xuất JSON
-              </button>
-              <label className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition border border-slate-700 cursor-pointer">
-                <Upload className="w-3.5 h-3.5" /> Nhập JSON
-                <input
-                  type="file"
-                  accept=".json"
-                  onChange={handleImportJSON}
-                  className="hidden"
-                />
-              </label>
+            <div className="text-slate-400 flex justify-between">
+              <span>Đang giám sát:</span>
+              <strong className="text-emerald-400">Thời gian thực</strong>
             </div>
           </div>
+        </aside>
 
-          {/* List of pharmacies */}
-          <div className="space-y-3">
-            {list.map((item, index) => (
-              <div
-                key={item.id}
-                className={`p-4 rounded-xl border transition ${
-                  editingId === item.id 
-                    ? 'bg-slate-800/60 border-sky-500/50' 
-                    : 'bg-slate-800/30 border-slate-800 hover:border-slate-700'
-                }`}
-              >
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                  {/* Order & Code */}
-                  <div className="md:col-span-1 flex items-center gap-2">
-                    <span className="text-xs font-mono font-bold text-slate-500">
-                      #{index + 1}
-                    </span>
-                    <input
-                      type="text"
-                      value={item.code}
-                      onChange={(e) => handleUpdateItem(item.id, { code: e.target.value })}
-                      placeholder="Mã"
-                      className="w-14 bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-xs font-bold text-sky-400 font-mono text-center outline-none focus:border-sky-500"
-                    />
-                  </div>
+        {/* WORKSPACE CONTENT AREA */}
+        <main className="flex-1 overflow-y-auto p-8">
+          {/* TAB 1: KỊCH BẢN CẢNH BÁO ĐIỀU PHỐI (TAB CHÍNH MỚI) */}
+          {activeTab === 'scenarios' && (
+            <ScenarioManagementTab
+              scenarios={localRules.scenarios || DEFAULT_SCENARIOS}
+              onChangeScenarios={handleUpdateScenarios}
+              pharmacies={list}
+              onShowToast={showNotification}
+            />
+          )}
 
-                  {/* Name */}
-                  <div className="md:col-span-3">
-                    <label className="text-[10px] text-slate-400 uppercase font-semibold block mb-0.5">
-                      Tên Quầy
-                    </label>
-                    <input
-                      type="text"
-                      value={item.name}
-                      onChange={(e) => handleUpdateItem(item.id, { name: e.target.value })}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-md px-2.5 py-1 text-xs text-white font-medium outline-none focus:border-sky-500"
-                    />
-                  </div>
+          {/* TAB 2: QUẢN LÝ QUẦY NHÀ THUỐC */}
+          {activeTab === 'pharmacies' && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleAddNew}
+                    className="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition shadow-sm"
+                  >
+                    <FontAwesomeIcon icon={faPlus} className="text-xs" /> Thêm quầy mới
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleResetDefaults}
+                    className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition border border-slate-700"
+                  >
+                    <FontAwesomeIcon icon={faRotateLeft} className="text-xs" /> Khôi phục 4 Quầy chuẩn
+                  </button>
+                </div>
+                <span className="text-xs text-slate-400 font-medium">
+                  Đang có <strong className="text-white">{list.length}</strong> quầy phát thuốc
+                </span>
+              </div>
 
-                  {/* URL */}
-                  <div className="md:col-span-5">
-                    <label className="text-[10px] text-slate-400 uppercase font-semibold block mb-0.5">
-                      Link URL QMS
-                    </label>
-                    <div className="relative flex items-center">
-                      <input
-                        type="url"
-                        value={item.url}
-                        onChange={(e) => handleUpdateItem(item.id, { url: e.target.value })}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-md pl-2.5 pr-8 py-1 text-xs text-sky-300 font-mono outline-none focus:border-sky-500 truncate"
-                      />
-                      <a
-                        href={item.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="absolute right-2 text-slate-400 hover:text-white"
-                        title="Mở kiểm tra thử"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
+              {/* List of pharmacies */}
+              <div className="space-y-2.5">
+                {list.map((item, index) => (
+                  <div
+                    key={item.id}
+                    className="p-3.5 rounded-xl border bg-slate-900/70 border-slate-800 hover:border-slate-700 transition"
+                  >
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+                      <div className="md:col-span-1 flex items-center gap-2">
+                        <span className="text-xs font-mono font-bold text-slate-500">
+                          #{index + 1}
+                        </span>
+                        <input
+                          type="text"
+                          value={item.code}
+                          onChange={(e) => handleUpdateItem(item.id, { code: e.target.value })}
+                          placeholder="Mã"
+                          className="w-14 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs font-bold text-sky-400 font-mono text-center outline-none focus:border-sky-500"
+                        />
+                      </div>
+
+                      <div className="md:col-span-3">
+                        <label className="text-[10px] text-slate-400 uppercase font-semibold block mb-0.5">
+                          Tên Quầy
+                        </label>
+                        <input
+                          type="text"
+                          value={item.name}
+                          onChange={(e) => handleUpdateItem(item.id, { name: e.target.value })}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-medium outline-none focus:border-sky-500"
+                        />
+                      </div>
+
+                      <div className="md:col-span-5">
+                        <label className="text-[10px] text-slate-400 uppercase font-semibold block mb-0.5">
+                          Link URL QMS
+                        </label>
+                        <div className="relative flex items-center">
+                          <input
+                            type="url"
+                            value={item.url}
+                            onChange={(e) => handleUpdateItem(item.id, { url: e.target.value })}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-2.5 pr-8 py-1.5 text-xs text-sky-300 font-mono outline-none focus:border-sky-500 truncate"
+                          />
+                          <a
+                            href={item.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="absolute right-2 text-slate-400 hover:text-white"
+                            title="Mở kiểm tra thử"
+                          >
+                            <FontAwesomeIcon icon={faArrowUpRightFromSquare} className="text-xs" />
+                          </a>
+                        </div>
+                      </div>
+
+                      <div className="md:col-span-3 flex items-center justify-between gap-2 mt-2 md:mt-4">
+                        <select
+                          value={item.scale}
+                          onChange={(e) =>
+                            handleUpdateItem(item.id, { scale: parseFloat(e.target.value) })
+                          }
+                          className="bg-slate-950 border border-slate-700 text-slate-300 text-xs rounded-lg px-2.5 py-1.5 outline-none focus:border-sky-500 font-mono"
+                        >
+                          {SCALE_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              Zoom: {opt.label}
+                            </option>
+                          ))}
+                        </select>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(item.id)}
+                          className="p-1.5 text-rose-400 hover:text-white hover:bg-rose-500/20 rounded-lg transition"
+                          title="Xóa quầy này"
+                        >
+                          <FontAwesomeIcon icon={faTrashCan} className="text-xs" />
+                        </button>
+                      </div>
                     </div>
                   </div>
+                ))}
+              </div>
+            </div>
+          )}
 
-                  {/* Scale & Actions */}
-                  <div className="md:col-span-3 flex items-center justify-between gap-2 mt-2 md:mt-4">
-                    <div>
-                      <select
-                        value={item.scale}
-                        onChange={(e) => handleUpdateItem(item.id, { scale: parseFloat(e.target.value) })}
-                        className="bg-slate-900 border border-slate-700 text-slate-300 text-xs rounded-md px-2 py-1 outline-none focus:border-sky-500"
-                      >
-                        {SCALE_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            Zoom: {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+          {/* TAB 3: BỐ CỤC & TỈ LỆ HIỂN THỊ (SẠCH SẼ, KHÔNG TEXT DÀI DÒNG) */}
+          {activeTab === 'display' && (
+            <div className="space-y-6 max-w-4xl">
+              {/* Layout mode picker */}
+              <div className="p-5 bg-slate-900/80 border border-slate-800 rounded-2xl space-y-3.5">
+                <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                  <FontAwesomeIcon icon={faLayerGroup} className="text-sky-400" />
+                  <span>Bố Cục Chia Lưới Màn Hình TV:</span>
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => onChangeLayout('grid-4')}
+                    className={`p-4 rounded-xl border text-xs font-bold flex flex-col items-center gap-2.5 transition ${
+                      layout === 'grid-4'
+                        ? 'bg-sky-600 text-white border-sky-500 shadow-md'
+                        : 'bg-slate-950 text-slate-300 border-slate-800 hover:bg-slate-900 hover:text-white'
+                    }`}
+                  >
+                    <FontAwesomeIcon icon={faTableCellsLarge} className="text-lg" />
+                    <span>Lưới 4 (2x2) ⭐</span>
+                  </button>
 
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleDelete(item.id)}
-                        className="p-1.5 text-rose-400 hover:text-white hover:bg-rose-500/20 rounded-md transition"
-                        title="Xóa quầy này"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onChangeLayout('split-1-3')}
+                    className={`p-4 rounded-xl border text-xs font-bold flex flex-col items-center gap-2.5 transition ${
+                      layout === 'split-1-3'
+                        ? 'bg-sky-600 text-white border-sky-500 shadow-md'
+                        : 'bg-slate-950 text-slate-300 border-slate-800 hover:bg-slate-900 hover:text-white'
+                    }`}
+                  >
+                    <FontAwesomeIcon icon={faSquare} className="text-lg" />
+                    <span>1 To + 3 Phụ</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => onChangeLayout('grid-2')}
+                    className={`p-4 rounded-xl border text-xs font-bold flex flex-col items-center gap-2.5 transition ${
+                      layout === 'grid-2'
+                        ? 'bg-sky-600 text-white border-sky-500 shadow-md'
+                        : 'bg-slate-950 text-slate-300 border-slate-800 hover:bg-slate-900 hover:text-white'
+                    }`}
+                  >
+                    <FontAwesomeIcon icon={faTableColumns} className="text-lg" />
+                    <span>Lưới 2 (1x2)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => onChangeLayout('grid-6')}
+                    className={`p-4 rounded-xl border text-xs font-bold flex flex-col items-center gap-2.5 transition ${
+                      layout === 'grid-6'
+                        ? 'bg-sky-600 text-white border-sky-500 shadow-md'
+                        : 'bg-slate-950 text-slate-300 border-slate-800 hover:bg-slate-900 hover:text-white'
+                    }`}
+                  >
+                    <FontAwesomeIcon icon={faTableCells} className="text-lg" />
+                    <span>Lưới 6 (2x3)</span>
+                  </button>
                 </div>
               </div>
-            ))}
-          </div>
 
-          {/* Quick Notice */}
-          <div className="p-3 bg-sky-500/5 border border-sky-500/20 rounded-xl flex items-start gap-2.5 text-xs text-slate-300">
-            <ShieldAlert className="w-4 h-4 text-sky-400 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold text-white">Lưu trữ trên thiết bị này:</p>
-              <p className="text-slate-400 mt-0.5">
-                Các thay đổi của bạn sẽ tự động được lưu vào trình duyệt (Local Storage). Khi mở lại ứng dụng hoặc tải lại trang web, cấu hình sẽ được giữ nguyên 100%.
-              </p>
+              {/* Global Scale Picker */}
+              <div className="p-5 bg-slate-900/80 border border-slate-800 rounded-2xl space-y-3.5">
+                <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                  <FontAwesomeIcon icon={faMaximize} className="text-emerald-400" />
+                  <span>Tỉ Lệ Thu Phóng Toàn Bộ Màn Hình (Global Zoom):</span>
+                </h3>
+
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  <select
+                    value={globalScale}
+                    onChange={(e) => onChangeGlobalScale(parseFloat(e.target.value))}
+                    className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded-xl px-4 py-2.5 outline-none focus:border-sky-500 font-mono font-medium"
+                  >
+                    {SCALE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={() => onChangeGlobalScale(0.50)}
+                    className="px-4 py-2.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold rounded-xl shadow transition flex items-center gap-2"
+                  >
+                    <FontAwesomeIcon icon={faMaximize} />
+                    <span>Đặt Vừa Khít (50%)</span>
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          )}
 
-        {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-800 bg-slate-900/90">
-          <span className="text-xs text-slate-400">
-            Tổng cộng: <strong className="text-white">{list.length} quầy</strong>
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition"
-            >
-              Hủy bỏ
-            </button>
-            <button
-              onClick={handleSaveAndClose}
-              className="px-5 py-2 text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white rounded-lg shadow-sm transition"
-            >
-              Lưu cấu hình
-            </button>
-          </div>
-        </div>
+          {/* TAB 4: CẢNH BÁO QUA ZALO */}
+          {activeTab === 'zalo' && <ZaloSettingsTab />}
+        </main>
       </div>
     </div>
   );

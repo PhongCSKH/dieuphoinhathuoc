@@ -1,13 +1,42 @@
-import React, { useState, useEffect } from 'react';
-import { PharmacyScreen, LayoutMode } from './types';
-import { DEFAULT_PHARMACIES } from './constants';
+import React, { useState, useEffect, useRef } from 'react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faXmark, faEye } from '@fortawesome/free-solid-svg-icons';
+import { PharmacyScreen, LayoutMode, DispatchRules, DispatchAlert } from './types';
+import { DEFAULT_PHARMACIES, DEFAULT_RULES } from './constants';
 import { Header } from './components/Header';
 import { PharmacyCard } from './components/PharmacyCard';
 import { ManageModal } from './components/ManageModal';
-import { X, Sparkles } from 'lucide-react';
+import { PasswordModal } from './components/PasswordModal';
+import { AlertBanner } from './components/AlertBanner';
+import { evaluateDispatchRules } from './utils/dispatchEngine';
+import { soundManager } from './utils/audio';
+import { 
+  dispatchZaloAlert, 
+  formatZaloOverloadAlert, 
+  formatZaloReinforcedAlert,
+  formatZaloResolvedAlert,
+  formatZaloImbalanceAlert,
+  formatZaloNoCounterAlert,
+  formatZaloLowTrafficAlert,
+} from './utils/zalo';
 
 export const App: React.FC = () => {
-  // Load saved pharmacies or use defaults
+  // Set custom favicon
+  useEffect(() => {
+    const setFaviconUrl = (url: string) => {
+      let link: HTMLLinkElement | null = document.querySelector("link[rel*='icon']");
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.getElementsByTagName('head')[0].appendChild(link);
+      }
+      link.type = 'image/png';
+      link.href = url;
+    };
+    setFaviconUrl('https://iili.io/F66acRs.png');
+  }, []);
+
+  // 1. Pharmacies state
   const [pharmacies, setPharmacies] = useState<PharmacyScreen[]>(() => {
     try {
       const saved = localStorage.getItem('dieu_phoi_pharmacies');
@@ -21,30 +50,47 @@ export const App: React.FC = () => {
     return DEFAULT_PHARMACIES;
   });
 
-  // Layout mode (default: grid-4)
+  // Previous pharmacies ref for diffing events
+  const prevPharmaciesRef = useRef<PharmacyScreen[]>(pharmacies);
+  // Track pharmacies with active overload to notify when resolved
+  const prevOverloadedPhsRef = useRef<Set<string>>(new Set());
+
+  // 2. Rules state
+  const [rules, setRules] = useState<DispatchRules>(() => {
+    try {
+      const saved = localStorage.getItem('dieu_phoi_rules');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (!parsed.scenarios || !Array.isArray(parsed.scenarios) || parsed.scenarios.length === 0) {
+          parsed.scenarios = DEFAULT_RULES.scenarios;
+        }
+        return parsed;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return DEFAULT_RULES;
+  });
+
+  // 3. Layout state
   const [layout, setLayout] = useState<LayoutMode>(() => {
     return (localStorage.getItem('dieu_phoi_layout') as LayoutMode) || 'grid-4';
   });
 
-  // Global scale for all screens
+  // 4. Global scale (mặc định 0.50 vừa khít lưới 4)
   const [globalScale, setGlobalScale] = useState<number>(() => {
     const saved = localStorage.getItem('dieu_phoi_scale');
-    return saved ? parseFloat(saved) : 0.85;
+    return saved ? parseFloat(saved) : 0.50;
   });
 
-  // Focused single pharmacy (null = grid mode)
+  // 5. Active Alerts
+  const [alerts, setAlerts] = useState<DispatchAlert[]>([]);
+
+  // 6. UI flags
   const [focusPharmacyId, setFocusPharmacyId] = useState<string | null>(null);
-
-  // Fullscreen state
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-
-  // Carousel mode (auto rotation)
-  const [carouselActive, setCarouselActive] = useState<boolean>(false);
-
-  // Modal open
+  const [isPasswordOpen, setIsPasswordOpen] = useState<boolean>(false);
   const [isManageOpen, setIsManageOpen] = useState<boolean>(false);
-
-  // Refresh all trigger
   const [globalRefreshCount, setGlobalRefreshCount] = useState<number>(0);
 
   // Save pharmacies
@@ -53,14 +99,26 @@ export const App: React.FC = () => {
     localStorage.setItem('dieu_phoi_pharmacies', JSON.stringify(newPharmacies));
   };
 
-  // Change layout
+  // Save rules
+  const handleSaveRules = (newRules: DispatchRules) => {
+    setRules(newRules);
+    localStorage.setItem('dieu_phoi_rules', JSON.stringify(newRules));
+  };
+
+  // Toggle sound
+  const handleToggleSound = () => {
+    const updated = { ...rules, soundEnabled: !rules.soundEnabled };
+    handleSaveRules(updated);
+  };
+
+  // Layout change
   const handleChangeLayout = (newLayout: LayoutMode) => {
     setLayout(newLayout);
     setFocusPharmacyId(null);
     localStorage.setItem('dieu_phoi_layout', newLayout);
   };
 
-  // Change global scale
+  // Global scale change
   const handleChangeGlobalScale = (scale: number) => {
     setGlobalScale(scale);
     localStorage.setItem('dieu_phoi_scale', scale.toString());
@@ -69,19 +127,22 @@ export const App: React.FC = () => {
     localStorage.setItem('dieu_phoi_pharmacies', JSON.stringify(updated));
   };
 
-  // Update scale for individual pharmacy
+  // Scale per pharmacy
   const handleUpdatePharmacyScale = (id: string, newScale: number) => {
     const updated = pharmacies.map((p) => (p.id === id ? { ...p, scale: newScale } : p));
     setPharmacies(updated);
     localStorage.setItem('dieu_phoi_pharmacies', JSON.stringify(updated));
   };
 
-  // Fullscreen handler
+  // Dismiss alert
+  const handleDismissAlert = (id: string) => {
+    setAlerts((prev) => prev.filter((a) => a.id !== id));
+  };
+
+  // Fullscreen
   const handleToggleFullscreen = () => {
     if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch((err) => {
-        console.error('Error attempting to enable fullscreen:', err);
-      });
+      document.documentElement.requestFullscreen().catch(() => {});
       setIsFullscreen(true);
     } else {
       if (document.exitFullscreen) {
@@ -91,11 +152,8 @@ export const App: React.FC = () => {
     }
   };
 
-  // Listen to native fullscreen changes
   useEffect(() => {
-    const handleFsChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
+    const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', handleFsChange);
     return () => document.removeEventListener('fullscreenchange', handleFsChange);
   }, []);
@@ -103,12 +161,9 @@ export const App: React.FC = () => {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (isManageOpen) return;
-
+      if (isManageOpen || isPasswordOpen) return;
       if (e.key === 'Escape') {
-        if (focusPharmacyId) {
-          setFocusPharmacyId(null);
-        }
+        if (focusPharmacyId) setFocusPharmacyId(null);
       } else if (e.key === '1' && pharmacies[0]) {
         setFocusPharmacyId((prev) => (prev === pharmacies[0].id ? null : pharmacies[0].id));
       } else if (e.key === '2' && pharmacies[1]) {
@@ -121,48 +176,238 @@ export const App: React.FC = () => {
         setFocusPharmacyId(null);
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [focusPharmacyId, isManageOpen, pharmacies]);
+  }, [focusPharmacyId, isManageOpen, isPasswordOpen, pharmacies]);
 
-  // Carousel auto rotation
+  // Periodic Telemetry Ingestion (Fetch QMS queue data)
   useEffect(() => {
-    if (!carouselActive || pharmacies.length === 0) return;
+    let isMounted = true;
 
-    const interval = setInterval(() => {
-      setFocusPharmacyId((current) => {
-        if (!current) {
-          return pharmacies[0].id;
+    const fetchTelemetry = async () => {
+      let hasChanges = false;
+      const updatedList = await Promise.all(
+        pharmacies.map(async (p) => {
+          if (!p.roomId) return p;
+          try {
+            const endpoint = `https://qms.tahospital.vn/api/v1/waitqueue?room=${p.roomId}&status=lcd`;
+            const res = await fetch(endpoint, { cache: 'no-store' });
+            if (res.ok) {
+              const json = await res.json();
+              if (json.data && Array.isArray(json.data.data)) {
+                const items = json.data.data;
+                const waiting = items.filter((i: { status: number }) => i.status === 1).length;
+                const servingItems = items.filter((i: { status: number }) => i.status === 2);
+                const activeCounters = [
+                  ...new Set(
+                    servingItems.map((i: { counter: number | string }) => String(i.counter)).filter(Boolean)
+                  ),
+                ] as string[];
+
+                const newStats = {
+                  waitingCount: waiting,
+                  servingCount: servingItems.length,
+                  activeCounters,
+                  lastUpdated: Date.now(),
+                };
+
+                if (
+                  p.stats?.waitingCount !== newStats.waitingCount ||
+                  p.stats?.servingCount !== newStats.servingCount ||
+                  p.stats?.activeCounters.length !== newStats.activeCounters.length ||
+                  p.stats?.activeCounters.join(',') !== newStats.activeCounters.join(',')
+                ) {
+                  hasChanges = true;
+                }
+
+                return { ...p, stats: newStats };
+              }
+            }
+          } catch {
+            // CORS fallback
+          }
+          return p;
+        })
+      );
+
+      const isAnyNoCounterPending = updatedList.some(
+        (p) => p.enabled && (p.stats?.waitingCount || 0) > 0 && (p.stats?.activeCounters.length || 0) === 0
+      );
+
+      if (isMounted && (hasChanges || isAnyNoCounterPending)) {
+        const { alerts: newAlerts, soundType } = evaluateDispatchRules(
+          updatedList,
+          rules,
+          prevPharmaciesRef.current
+        );
+
+        if (hasChanges) {
+          setPharmacies(updatedList);
         }
-        const currentIndex = pharmacies.findIndex((p) => p.id === current);
-        const nextIndex = (currentIndex + 1) % pharmacies.length;
-        return pharmacies[nextIndex].id;
-      });
-    }, 20000); // 20s per screen
+        setAlerts(newAlerts);
 
-    return () => clearInterval(interval);
-  }, [carouselActive, pharmacies]);
+        if (rules.soundEnabled && soundType) {
+          soundManager.play(soundType);
+        }
+
+        // Tự động chuyển tiếp cảnh báo đến Zalo cá nhân / nhóm với Rich Text Style, Màu Sắc & Tag Nhân Sự
+        for (const alert of newAlerts) {
+          if (alert.zaloPayload) {
+            dispatchZaloAlert({
+              alertKey: alert.id,
+              message: alert.zaloPayload.message,
+              styles: alert.zaloPayload.styles,
+              urgency: alert.zaloPayload.urgency,
+              mentions: alert.zaloPayload.mentions,
+              forceSend: alert.type === 'reinforced' || alert.type === 'low_traffic',
+            });
+            if (alert.pharmacyId && (alert.type === 'overload' || alert.type === 'no_counter')) {
+              prevOverloadedPhsRef.current.add(alert.pharmacyId);
+            }
+          } else if (alert.type === 'overload') {
+            const ph = updatedList.find((p) => p.id === alert.pharmacyId);
+            const formatted = formatZaloOverloadAlert({
+              pharmacyName: alert.pharmacyName || ph?.name || 'Nhà thuốc',
+              waitingCount: alert.metadata?.waitingCount ?? (ph?.stats?.waitingCount || 0),
+              activeCounters: ph?.stats?.activeCounters || [],
+              threshold: rules.maxWaitingPerCounter,
+            });
+            dispatchZaloAlert({
+              alertKey: alert.id,
+              message: formatted.text,
+              styles: formatted.styles,
+              urgency: formatted.urgency,
+            });
+            if (alert.pharmacyId) {
+              prevOverloadedPhsRef.current.add(alert.pharmacyId);
+            }
+          } else if (alert.type === 'reinforced') {
+            const ph = updatedList.find((p) => p.id === alert.pharmacyId);
+            const formatted = formatZaloReinforcedAlert({
+              pharmacyName: alert.pharmacyName || ph?.name || 'Nhà thuốc',
+              addedCounters: alert.metadata?.addedCounters || [],
+              totalCounters: alert.metadata?.totalCounters || ph?.stats?.activeCounters.length || 0,
+              initialCounterCount: alert.metadata?.initialCounterCount || 0,
+              waitingCount: alert.metadata?.waitingCount ?? (ph?.stats?.waitingCount || 0),
+            });
+            dispatchZaloAlert({
+              alertKey: alert.id,
+              message: formatted.text,
+              styles: formatted.styles,
+              urgency: formatted.urgency,
+              forceSend: true,
+            });
+          } else if (alert.type === 'no_counter') {
+            const ph = updatedList.find((p) => p.id === alert.pharmacyId);
+            const formatted = formatZaloNoCounterAlert({
+              pharmacyName: alert.pharmacyName || ph?.name || 'Nhà thuốc',
+              waitingCount: alert.metadata?.waitingCount ?? (ph?.stats?.waitingCount || 0),
+            });
+            dispatchZaloAlert({
+              alertKey: alert.id,
+              message: formatted.text,
+              styles: formatted.styles,
+              urgency: formatted.urgency,
+            });
+            if (alert.pharmacyId) {
+              prevOverloadedPhsRef.current.add(alert.pharmacyId);
+            }
+          } else if (alert.type === 'imbalance') {
+            const nt1 = updatedList.find((p) => p.code === 'NT1') || updatedList[0];
+            const nt2 = updatedList.find((p) => p.code === 'NT2') || updatedList[1];
+            const w1 = nt1?.stats?.waitingCount || 0;
+            const w2 = nt2?.stats?.waitingCount || 0;
+            const heavier = w1 >= w2 ? nt1 : nt2;
+            const lighter = w1 >= w2 ? nt2 : nt1;
+            const formatted = formatZaloImbalanceAlert({
+              heavierName: heavier?.name,
+              lighterName: lighter?.name,
+              heavierCount: Math.max(w1, w2),
+              lighterCount: Math.min(w1, w2),
+              diff: Math.abs(w1 - w2),
+              threshold: rules.maxImbalanceNT1NT2,
+            });
+            dispatchZaloAlert({
+              alertKey: alert.id,
+              message: formatted.text,
+              styles: formatted.styles,
+              urgency: formatted.urgency,
+            });
+          } else if (alert.type === 'low_traffic') {
+            const ph = updatedList.find((p) => p.id === alert.pharmacyId);
+            const formatted = formatZaloLowTrafficAlert({
+              pharmacyName: alert.pharmacyName || ph?.name || 'Nhà thuốc',
+              waitingCount: alert.metadata?.waitingCount ?? (ph?.stats?.waitingCount || 0),
+              counterCount: alert.metadata?.totalCounters ?? (ph?.stats?.activeCounters.length || 0),
+            });
+            dispatchZaloAlert({
+              alertKey: alert.id,
+              message: formatted.text,
+              styles: formatted.styles,
+              urgency: formatted.urgency,
+              forceSend: true,
+            });
+          }
+        }
+
+        // Tự động thông báo khi nhà thuốc đã hạ tải và ổn định an toàn trở lại
+        for (const pharmacyId of Array.from(prevOverloadedPhsRef.current)) {
+          const isStillOverloaded = newAlerts.some(
+            (a) => a.pharmacyId === pharmacyId && (a.type === 'overload' || a.type === 'no_counter')
+          );
+          if (!isStillOverloaded) {
+            const ph = updatedList.find((p) => p.id === pharmacyId);
+            // Chỉ gửi thông báo hạ tải khi nhà thuốc đang có quầy phục vụ
+            if (ph && (ph.stats?.activeCounters.length || 0) > 0) {
+              const formatted = formatZaloResolvedAlert({
+                pharmacyName: ph.name,
+                waitingCount: ph.stats?.waitingCount || 0,
+                activeCountersCount: ph.stats?.activeCounters.length || 0,
+              });
+              dispatchZaloAlert({
+                alertKey: `resolved-${pharmacyId}`,
+                message: formatted.text,
+                styles: formatted.styles,
+                urgency: formatted.urgency,
+                isResolved: true,
+                forceSend: true,
+              });
+            }
+            prevOverloadedPhsRef.current.delete(pharmacyId);
+          }
+        }
+
+        prevPharmaciesRef.current = updatedList;
+      }
+    };
+
+
+    fetchTelemetry();
+    const interval = setInterval(fetchTelemetry, (rules.telemetryInterval || 4) * 1000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [pharmacies, rules]);
 
   const focusedPharmacy = pharmacies.find((p) => p.id === focusPharmacyId);
 
-  // Render grid based on layout mode
+  // Render grid
   const renderGridContent = () => {
-    // If a specific pharmacy is focused
     if (focusedPharmacy) {
       return (
         <div className="relative w-full h-full p-2">
-          {/* Floating Focus Badge */}
           <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 bg-slate-900/90 border border-sky-500/40 text-slate-100 px-4 py-1.5 rounded-full shadow-2xl backdrop-blur-md text-xs font-semibold">
             <span className="flex items-center gap-1.5 text-sky-400">
-              <Sparkles className="w-4 h-4 animate-pulse" />
+              <FontAwesomeIcon icon={faEye} />
               Đang xem chi tiết: {focusedPharmacy.name}
             </span>
             <button
               onClick={() => setFocusPharmacyId(null)}
               className="flex items-center gap-1 px-2.5 py-0.5 bg-sky-600 hover:bg-sky-500 text-white rounded-full transition text-[11px]"
             >
-              <X className="w-3.5 h-3.5" /> Thoát (Esc)
+              <FontAwesomeIcon icon={faXmark} /> Thoát (Esc)
             </button>
           </div>
 
@@ -172,12 +417,12 @@ export const App: React.FC = () => {
             isFocused={true}
             onToggleFocus={() => setFocusPharmacyId(null)}
             onUpdateScale={(s) => handleUpdatePharmacyScale(focusedPharmacy.id, s)}
+            alerts={alerts.filter((a) => a.pharmacyId === focusedPharmacy.id)}
           />
         </div>
       );
     }
 
-    // Layout: 2x2 Grid (4 Screens - Default)
     if (layout === 'grid-4') {
       const displayPharmacies = pharmacies.slice(0, 4);
       return (
@@ -189,6 +434,7 @@ export const App: React.FC = () => {
                 isFocused={false}
                 onToggleFocus={() => setFocusPharmacyId(item.id)}
                 onUpdateScale={(s) => handleUpdatePharmacyScale(item.id, s)}
+                alerts={alerts.filter((a) => a.pharmacyId === item.id)}
               />
             </div>
           ))}
@@ -196,13 +442,11 @@ export const App: React.FC = () => {
       );
     }
 
-    // Layout: 1 Large + 3 Small (Split 1-3)
     if (layout === 'split-1-3') {
       const primary = pharmacies[0];
       const sideItems = pharmacies.slice(1, 4);
       return (
         <div className="grid grid-cols-1 lg:grid-cols-3 h-full w-full gap-2 p-2">
-          {/* Main big screen */}
           {primary && (
             <div className="lg:col-span-2 h-full w-full min-h-0">
               <PharmacyCard
@@ -211,11 +455,10 @@ export const App: React.FC = () => {
                 isFocused={false}
                 onToggleFocus={() => setFocusPharmacyId(primary.id)}
                 onUpdateScale={(s) => handleUpdatePharmacyScale(primary.id, s)}
+                alerts={alerts.filter((a) => a.pharmacyId === primary.id)}
               />
             </div>
           )}
-
-          {/* 3 small screens stacked */}
           <div className="grid grid-rows-3 h-full w-full gap-2 min-h-0">
             {sideItems.map((item) => (
               <div key={`${item.id}-${globalRefreshCount}`} className="h-full w-full min-h-0">
@@ -224,6 +467,7 @@ export const App: React.FC = () => {
                   isFocused={false}
                   onToggleFocus={() => setFocusPharmacyId(item.id)}
                   onUpdateScale={(s) => handleUpdatePharmacyScale(item.id, s)}
+                  alerts={alerts.filter((a) => a.pharmacyId === item.id)}
                 />
               </div>
             ))}
@@ -232,7 +476,6 @@ export const App: React.FC = () => {
       );
     }
 
-    // Layout: 1x2 Grid (2 Screens)
     if (layout === 'grid-2') {
       const displayPharmacies = pharmacies.slice(0, 2);
       return (
@@ -244,6 +487,7 @@ export const App: React.FC = () => {
                 isFocused={false}
                 onToggleFocus={() => setFocusPharmacyId(item.id)}
                 onUpdateScale={(s) => handleUpdatePharmacyScale(item.id, s)}
+                alerts={alerts.filter((a) => a.pharmacyId === item.id)}
               />
             </div>
           ))}
@@ -251,7 +495,6 @@ export const App: React.FC = () => {
       );
     }
 
-    // Layout: 2x3 Grid (6 Screens)
     if (layout === 'grid-6') {
       const displayPharmacies = pharmacies.slice(0, 6);
       return (
@@ -263,6 +506,7 @@ export const App: React.FC = () => {
                 isFocused={false}
                 onToggleFocus={() => setFocusPharmacyId(item.id)}
                 onUpdateScale={(s) => handleUpdatePharmacyScale(item.id, s)}
+                alerts={alerts.filter((a) => a.pharmacyId === item.id)}
               />
             </div>
           ))}
@@ -274,33 +518,49 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden">
-      {/* Top Navigation Control Bar */}
+    <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
+      {/* 1. Header Control Bar (Tinh giản, chuyên nghiệp) */}
       <Header
-        layout={layout}
-        onChangeLayout={handleChangeLayout}
         onRefreshAll={() => setGlobalRefreshCount((prev) => prev + 1)}
-        onOpenManage={() => setIsManageOpen(true)}
-        globalScale={globalScale}
-        onChangeGlobalScale={handleChangeGlobalScale}
-        carouselActive={carouselActive}
-        onToggleCarousel={() => setCarouselActive(!carouselActive)}
+        onOpenManage={() => setIsPasswordOpen(true)}
         isFullscreen={isFullscreen}
         onToggleFullscreen={handleToggleFullscreen}
         pharmacyCount={pharmacies.length}
+        activeAlertCount={alerts.length}
+        soundEnabled={rules.soundEnabled}
+        onToggleSound={handleToggleSound}
       />
 
-      {/* Main Viewport Container */}
-      <main className="flex-1 w-full h-[calc(100vh-3.5rem)] overflow-hidden bg-slate-950">
+      {/* 2. Real-time Alert Banner */}
+      <AlertBanner alerts={alerts} onDismiss={handleDismissAlert} />
+
+      {/* 3. Main Viewport Container */}
+      <main className="flex-1 w-full h-[calc(100vh-3rem)] overflow-hidden bg-slate-950">
         {renderGridContent()}
       </main>
 
-      {/* Configuration & Links Modal */}
+      {/* 4. Password Protection Modal (Yêu cầu mật khẩu PhongCSKH@) */}
+      <PasswordModal
+        isOpen={isPasswordOpen}
+        onClose={() => setIsPasswordOpen(false)}
+        onSuccess={() => {
+          setIsPasswordOpen(false);
+          setIsManageOpen(true);
+        }}
+      />
+
+      {/* 5. Configuration & Rules Modal */}
       <ManageModal
         isOpen={isManageOpen}
         onClose={() => setIsManageOpen(false)}
         pharmacies={pharmacies}
         onSavePharmacies={handleSavePharmacies}
+        rules={rules}
+        onSaveRules={handleSaveRules}
+        layout={layout}
+        onChangeLayout={handleChangeLayout}
+        globalScale={globalScale}
+        onChangeGlobalScale={handleChangeGlobalScale}
       />
     </div>
   );
