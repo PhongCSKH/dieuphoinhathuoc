@@ -8,7 +8,8 @@ import { PharmacyCard } from './components/PharmacyCard';
 import { ManageModal } from './components/ManageModal';
 import { PasswordModal } from './components/PasswordModal';
 import { AlertBanner } from './components/AlertBanner';
-import { evaluateDispatchRules } from './utils/dispatchEngine';
+import { evaluateDispatchRules, buildAllVariables } from './utils/dispatchEngine';
+import { compileZaloMessage } from './utils/zaloTextCompiler';
 import { soundManager } from './utils/audio';
 import { 
   dispatchZaloAlert, 
@@ -359,19 +360,41 @@ export const App: React.FC = () => {
             const ph = updatedList.find((p) => p.id === pharmacyId);
             // Chỉ gửi thông báo hạ tải khi nhà thuốc đang có quầy phục vụ
             if (ph && (ph.stats?.activeCounters.length || 0) > 0) {
-              const formatted = formatZaloResolvedAlert({
-                pharmacyName: ph.name,
-                waitingCount: ph.stats?.waitingCount || 0,
-                activeCountersCount: ph.stats?.activeCounters.length || 0,
-              });
-              dispatchZaloAlert({
-                alertKey: `resolved-${pharmacyId}`,
-                message: formatted.text,
-                styles: formatted.styles,
-                urgency: formatted.urgency,
-                isResolved: true,
-                forceSend: true,
-              });
+              const scLowTraffic = rules.scenarios?.find((s) => s.type === 'low_traffic');
+              if (scLowTraffic && scLowTraffic.enabled && scLowTraffic.zalo?.enabled) {
+                const compiled = compileZaloMessage(
+                  scLowTraffic.zalo.messageTemplate,
+                  buildAllVariables(ph, updatedList, {
+                    so_khach: ph.stats?.waitingCount || 0,
+                    so_quay: ph.stats?.activeCounters.length || 0,
+                  }),
+                  scLowTraffic.zalo.mentionMembers,
+                  scLowTraffic.zalo.styles
+                );
+                dispatchZaloAlert({
+                  alertKey: `resolved-${pharmacyId}`,
+                  message: compiled.message,
+                  styles: compiled.styles,
+                  urgency: scLowTraffic.zalo.urgency,
+                  mentions: compiled.mentions,
+                  isResolved: true,
+                  forceSend: true,
+                });
+              } else if (!rules.scenarios) {
+                const formatted = formatZaloResolvedAlert({
+                  pharmacyName: ph.name,
+                  waitingCount: ph.stats?.waitingCount || 0,
+                  activeCountersCount: ph.stats?.activeCounters.length || 0,
+                });
+                dispatchZaloAlert({
+                  alertKey: `resolved-${pharmacyId}`,
+                  message: formatted.text,
+                  styles: formatted.styles,
+                  urgency: formatted.urgency,
+                  isResolved: true,
+                  forceSend: true,
+                });
+              }
             }
             prevOverloadedPhsRef.current.delete(pharmacyId);
           }

@@ -201,7 +201,7 @@ export const DEFAULT_SCENARIOS: AlertScenario[] = [
   },
   {
     id: 'scenario-low-traffic',
-    name: 'Hạ tải an toàn & Vãn khách',
+    name: 'Hạ tải ổn định & Vãn khách (Thông báo an toàn)',
     enabled: true,
     type: 'low_traffic',
     severity: 'info',
@@ -217,7 +217,7 @@ export const DEFAULT_SCENARIOS: AlertScenario[] = [
       urgency: 0, // Bình thường
       cooldownMinutes: 2,
       mentionMembers: [],
-      messageTemplate: '🟢 [HẠ TẢI AN TOÀN] {ten_quay} đã giải tỏa xong đợt cao điểm ({so_khach} khách chờ / {so_quay} quầy).',
+      messageTemplate: '[color=#15a85f][b][HẠ TẢI ỔN ĐỊNH - {ten_quay}][/b][/color]\n• Khách chờ còn: {so_khach} người (Đã an toàn)\n• Quầy hoạt động: {so_quay} quầy\n✔ Trạng thái: Bình thường, đã giải tỏa xong\n• Thời gian: {gio_hien_tai}',
       styles: [
         { start: 0, len: 45, st: 'c_15a85f' },
         { start: 0, len: 45, st: 'b' },

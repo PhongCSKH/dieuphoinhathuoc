@@ -258,6 +258,15 @@ export const ScenarioManagementTab: React.FC<ScenarioManagementTabProps> = ({
                     </strong>
                   </span>
                 </div>
+                {/* Message preview snippet */}
+                {sc.zalo.enabled && (
+                  <div className="px-2.5 py-1.5 rounded-lg bg-slate-950/70 border border-slate-800/80 text-[11px] text-slate-300 truncate">
+                    <span className="text-slate-500 mr-1.5 text-[10px] font-semibold uppercase">Mẫu tin:</span>
+                    <span className="text-emerald-400 font-medium">
+                      {sc.zalo.messageTemplate.split('\n')[0].replace(/\[\/?(b|i|u|s|big|small|color(=[^\]]*)?)\]/gi, '')}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Bottom Card Actions */}
@@ -292,15 +301,16 @@ export const ScenarioManagementTab: React.FC<ScenarioManagementTabProps> = ({
                   <button
                     type="button"
                     onClick={() => setEditingScenario(sc)}
-                    className="px-2.5 py-1 rounded bg-sky-600/20 hover:bg-sky-600/30 text-sky-300 text-xs font-semibold border border-sky-500/30 flex items-center gap-1 transition"
+                    className="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold shadow flex items-center gap-1.5 transition"
+                    title="Mở bộ soạn thảo và cấu hình kịch bản này"
                   >
                     <FontAwesomeIcon icon={faPenToSquare} className="text-xs" />
-                    <span>Cấu hình</span>
+                    <span>Cấu hình & Sửa tin nhắn</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => handleDeleteScenario(sc.id)}
-                    className="p-1 text-slate-400 hover:text-rose-400 rounded transition"
+                    className="p-1.5 text-slate-400 hover:text-rose-400 rounded-lg transition"
                     title="Xóa kịch bản"
                   >
                     <FontAwesomeIcon icon={faTrashCan} className="text-xs" />
