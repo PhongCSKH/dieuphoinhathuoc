@@ -44,6 +44,68 @@ export function evaluateDispatchRules(
   const maxImbalance = scImbalance?.thresholds?.value ?? rules.maxImbalanceNT1NT2 ?? 2;
   const crowdedThreshold = scCrowded?.thresholds?.value ?? rules.crowdedThreshold ?? 5;
 
+  // Helper sinh đầy đủ toàn bộ 20+ biến số realtime cho tin nhắn
+  const buildAllVariables = (curr?: PharmacyScreen, extra: Record<string, any> = {}) => {
+    const stats = curr?.stats || { waitingCount: 0, servingCount: 0, activeCounters: [], lastUpdated: Date.now() };
+    const counterCount = stats.activeCounters.length;
+    const taiTrong = counterCount > 0 ? (stats.waitingCount / counterCount).toFixed(1) : stats.waitingCount.toString();
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    const getPh = (code: string) => pharmacies.find((item) => item.code === code) || pharmacies.find((item) => item.id === code);
+    const p1 = getPh('NT1') || pharmacies[0];
+    const p2 = getPh('NT2') || pharmacies[1];
+    const p3 = getPh('NT3') || pharmacies[2];
+    const p4 = getPh('NT4') || pharmacies[3];
+
+    const p1Wait = p1?.stats?.waitingCount || 0;
+    const p1Cnt = p1?.stats?.activeCounters.length || 0;
+    const p2Wait = p2?.stats?.waitingCount || 0;
+    const p2Cnt = p2?.stats?.activeCounters.length || 0;
+    const p3Wait = p3?.stats?.waitingCount || 0;
+    const p3Cnt = p3?.stats?.activeCounters.length || 0;
+    const p4Wait = p4?.stats?.waitingCount || 0;
+    const p4Cnt = p4?.stats?.activeCounters.length || 0;
+
+    const totalWait = pharmacies.reduce((sum, item) => sum + (item.stats?.waitingCount || 0), 0);
+    const totalCounters = pharmacies.reduce((sum, item) => sum + (item.stats?.activeCounters.length || 0), 0);
+
+    const summaryLines = [
+      p1 ? `• ${p1.name}: ${p1Wait} khách / ${p1Cnt} quầy` : '',
+      p2 ? `• ${p2.name}: ${p2Wait} khách / ${p2Cnt} quầy` : '',
+      p3 ? `• ${p3.name}: ${p3Wait} khách / ${p3Cnt} quầy` : '',
+      p4 ? `• ${p4.name}: ${p4Wait} khách / ${p4Cnt} quầy` : '',
+    ].filter(Boolean).join('\n');
+
+    return {
+      ten_quay: curr?.name || 'Nhà thuốc',
+      ma_quay: curr?.code || 'NT',
+      so_khach: stats.waitingCount,
+      dang_phuc_vu: stats.servingCount,
+      so_quay: counterCount,
+      danh_sach_quay_mo: stats.activeCounters.length > 0 ? stats.activeCounters.map((c) => `Quầy ${c}`).join(', ') : 'Chưa có',
+      tai_trong: taiTrong,
+      nguong_tai: maxWaitingPerCounter,
+      gio_hien_tai: timeStr,
+      nt1_khach: p1Wait,
+      nt1_quay: p1Cnt,
+      nt1_tai_trong: p1Cnt > 0 ? (p1Wait / p1Cnt).toFixed(1) : p1Wait.toString(),
+      nt2_khach: p2Wait,
+      nt2_quay: p2Cnt,
+      nt2_tai_trong: p2Cnt > 0 ? (p2Wait / p2Cnt).toFixed(1) : p2Wait.toString(),
+      nt3_khach: p3Wait,
+      nt3_quay: p3Cnt,
+      nt3_tai_trong: p3Cnt > 0 ? (p3Wait / p3Cnt).toFixed(1) : p3Wait.toString(),
+      nt4_khach: p4Wait,
+      nt4_quay: p4Cnt,
+      nt4_tai_trong: p4Cnt > 0 ? (p4Wait / p4Cnt).toFixed(1) : p4Wait.toString(),
+      tong_quan_cac_quay: summaryLines,
+      tong_khach_cho: totalWait,
+      tong_quay_mo: totalCounters,
+      ...extra,
+    };
+  };
+
   // 1. Kiểm tra từng nhà thuốc
   for (const p of pharmacies) {
     if (!p.enabled) continue;
@@ -66,13 +128,10 @@ export function evaluateDispatchRules(
         if (scNoCounter?.zalo?.enabled) {
           const compiled = compileZaloMessage(
             scNoCounter.zalo.messageTemplate,
-            {
-              ten_quay: p.name,
-              so_khach: waiting,
-              so_quay: 0,
+            buildAllVariables(p, {
               thoi_gian: elapsedSeconds,
               quay_can_mo: 1,
-            },
+            }),
             scNoCounter.zalo.mentionMembers,
             scNoCounter.zalo.styles
           );
@@ -124,12 +183,9 @@ export function evaluateDispatchRules(
       if (scOverload?.zalo?.enabled) {
         const compiled = compileZaloMessage(
           scOverload.zalo.messageTemplate,
-          {
-            ten_quay: p.name,
-            so_khach: waiting,
-            so_quay: counterCount,
+          buildAllVariables(p, {
             quay_can_mo: Math.max(1, neededCounters),
-          },
+          }),
           scOverload.zalo.mentionMembers,
           scOverload.zalo.styles
         );
@@ -181,12 +237,9 @@ export function evaluateDispatchRules(
           if (scReinforced?.zalo?.enabled) {
             const compiled = compileZaloMessage(
               scReinforced.zalo.messageTemplate,
-              {
-                ten_quay: p.name,
-                danh_sach_quay_moi: newReinforced.join(', '),
-                so_quay: counterCount,
-                so_khach: waiting,
-              },
+              buildAllVariables(p, {
+                danh_sach_quay_moi: newReinforced.map((c) => `Quầy ${c}`).join(', '),
+              }),
               scReinforced.zalo.mentionMembers,
               scReinforced.zalo.styles
             );
@@ -254,12 +307,9 @@ export function evaluateDispatchRules(
           if (scReinforced?.zalo?.enabled) {
             const compiled = compileZaloMessage(
               scReinforced.zalo.messageTemplate,
-              {
-                ten_quay: p.name,
-                danh_sach_quay_moi: newReinforced.join(', '),
-                so_quay: counterCount,
-                so_khach: waiting,
-              },
+              buildAllVariables(p, {
+                danh_sach_quay_moi: newReinforced.map((c) => `Quầy ${c}`).join(', '),
+              }),
               scReinforced.zalo.mentionMembers,
               scReinforced.zalo.styles
             );
@@ -324,11 +374,7 @@ export function evaluateDispatchRules(
           if (scLowTraffic?.zalo?.enabled) {
             const compiled = compileZaloMessage(
               scLowTraffic.zalo.messageTemplate,
-              {
-                ten_quay: p.name,
-                so_khach: waiting,
-                so_quay: counterCount,
-              },
+              buildAllVariables(p),
               scLowTraffic.zalo.mentionMembers,
               scLowTraffic.zalo.styles
             );
@@ -390,11 +436,12 @@ export function evaluateDispatchRules(
         if (scImbalance?.zalo?.enabled) {
           const compiled = compileZaloMessage(
             scImbalance.zalo.messageTemplate,
-            {
-              ten_quay: heavier.name,
+            buildAllVariables(heavier, {
               so_lech: diff,
+              quay_dong: heavier.name,
+              quay_vang: lighter.name,
               so_khach: Math.max(w1, w2),
-            },
+            }),
             scImbalance.zalo.mentionMembers,
             scImbalance.zalo.styles
           );
