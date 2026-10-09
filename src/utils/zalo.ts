@@ -95,11 +95,27 @@ export interface ZaloFormattedMessage {
   urgency: number; // 0 = Default, 1 = Important, 2 = Urgent
 }
 
+export async function fetchGroupMembers(groupId?: string): Promise<Array<{ uid: string; name: string; avatar?: string }>> {
+  try {
+    const url = groupId ? `${ZALO_BRIDGE_BASE}/api/group-members?groupId=${encodeURIComponent(groupId)}` : `${ZALO_BRIDGE_BASE}/api/group-members`;
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.members || [];
+  } catch {
+    return [];
+  }
+}
+
 export async function dispatchZaloAlert(params: {
   alertKey: string;
   message: string;
   styles?: ZaloStyleItem[];
   urgency?: number;
+  mentions?: Array<{ pos: number; uid: string; len: number; name?: string }>;
   isResolved?: boolean;
   forceSend?: boolean;
 }): Promise<{ success: boolean; skipped?: boolean; reason?: string }> {

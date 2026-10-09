@@ -1,20 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { 
-  faXmark, 
-  faPlus, 
-  faTrashCan, 
-  faRotateLeft, 
-  faDownload, 
-  faUpload, 
-  faCheck, 
-  faArrowUpRightFromSquare, 
-  faShieldHalved,
+import {
+  faXmark,
+  faPlus,
+  faTrashCan,
+  faRotateLeft,
+  faDownload,
+  faUpload,
+  faCheck,
+  faArrowUpRightFromSquare,
   faHospital,
-  faTriangleExclamation,
-  faScaleBalanced,
-  faDesktop,
-  faVolumeHigh,
   faLayerGroup,
   faTableCellsLarge,
   faSquare,
@@ -22,12 +17,13 @@ import {
   faTableCells,
   faMaximize,
   faComments,
-  faClock
+  faSliders,
+  faFloppyDisk,
 } from '@fortawesome/free-solid-svg-icons';
-import { PharmacyScreen, DispatchRules, LayoutMode } from '../types';
-import { DEFAULT_PHARMACIES, SCALE_OPTIONS } from '../constants';
-import { soundManager } from '../utils/audio';
+import { PharmacyScreen, DispatchRules, LayoutMode, AlertScenario } from '../types';
+import { DEFAULT_PHARMACIES, SCALE_OPTIONS, DEFAULT_SCENARIOS } from '../constants';
 import { ZaloSettingsTab } from './ZaloSettingsTab';
+import { ScenarioManagementTab } from './ScenarioManagementTab';
 
 interface ManageModalProps {
   isOpen: boolean;
@@ -54,18 +50,51 @@ export const ManageModal: React.FC<ManageModalProps> = ({
   globalScale,
   onChangeGlobalScale,
 }) => {
-  const [activeTab, setActiveTab] = useState<'display' | 'pharmacies' | 'rules' | 'zalo'>('display');
+  const [activeTab, setActiveTab] = useState<'display' | 'pharmacies' | 'scenarios' | 'zalo'>('scenarios');
   const [list, setList] = useState<PharmacyScreen[]>(pharmacies);
-  const [localRules, setLocalRules] = useState<DispatchRules>(rules);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [localRules, setLocalRules] = useState<DispatchRules>(() => {
+    return {
+      ...rules,
+      scenarios: rules.scenarios && rules.scenarios.length > 0 ? rules.scenarios : DEFAULT_SCENARIOS,
+    };
+  });
   const [notification, setNotification] = useState<string | null>(null);
+
+  // Sync state khi mở modal
+  useEffect(() => {
+    if (isOpen) {
+      setList(pharmacies);
+      setLocalRules({
+        ...rules,
+        scenarios: rules.scenarios && rules.scenarios.length > 0 ? rules.scenarios : DEFAULT_SCENARIOS,
+      });
+    }
+  }, [isOpen, pharmacies, rules]);
+
+  // Phím tắt Esc và Ctrl+S
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isOpen) return;
+      if (e.key === 'Escape') {
+        onClose();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        handleSaveAndClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, list, localRules]);
 
   if (!isOpen) return null;
 
+  const showNotification = (msg: string) => {
+    setNotification(msg);
+    setTimeout(() => setNotification(null), 3000);
+  };
+
   const handleUpdateItem = (id: string, updates: Partial<PharmacyScreen>) => {
-    setList((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, ...updates } : item))
-    );
+    setList((prev) => prev.map((item) => (item.id === id ? { ...item, ...updates } : item)));
   };
 
   const handleAddNew = () => {
@@ -87,17 +116,18 @@ export const ManageModal: React.FC<ManageModalProps> = ({
       },
     };
     setList([...list, newItem]);
-    setEditingId(newItem.id);
+    showNotification(`Đã thêm Nhà thuốc ${nextNumber}`);
   };
 
   const handleDelete = (id: string) => {
-    if (confirm('Bạn có chắc chắn muốn xóa quầy này khỏi màn hình theo dõi?')) {
+    if (confirm('Xóa quầy này khỏi hệ thống theo dõi?')) {
       setList(list.filter((item) => item.id !== id));
+      showNotification('Đã xóa quầy!');
     }
   };
 
   const handleResetDefaults = () => {
-    if (confirm('Khôi phục lại danh sách 4 Nhà thuốc chuẩn của Tâm Anh Hospital?')) {
+    if (confirm('Khôi phục lại danh sách 4 Nhà thuốc chuẩn của Bệnh viện Tâm Anh?')) {
       setList(DEFAULT_PHARMACIES);
       onSavePharmacies(DEFAULT_PHARMACIES);
       showNotification('Đã khôi phục 4 Nhà thuốc chuẩn!');
@@ -147,7 +177,7 @@ export const ManageModal: React.FC<ManageModalProps> = ({
           onSavePharmacies(parsed);
           showNotification('Đã nhập cấu hình thành công!');
         }
-      } catch (err) {
+      } catch {
         alert('Không thể đọc file JSON!');
       }
     };
@@ -155,246 +185,201 @@ export const ManageModal: React.FC<ManageModalProps> = ({
     e.target.value = '';
   };
 
-  const showNotification = (msg: string) => {
-    setNotification(msg);
-    setTimeout(() => setNotification(null), 3000);
-  };
-
-  const handleTestSound = (type: 'danger' | 'warning' | 'success' | 'imbalance') => {
-    soundManager.play(type);
-    showNotification(`Đã phát thử âm thanh chuông: ${type.toUpperCase()}`);
+  const handleUpdateScenarios = (newScenarios: AlertScenario[]) => {
+    setLocalRules({
+      ...localRules,
+      scenarios: newScenarios,
+    });
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-4xl max-h-[90vh] bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-3.5 border-b border-slate-800 bg-slate-900/90">
+    <div className="fixed inset-0 z-50 w-screen h-screen bg-slate-950 flex flex-col text-slate-100 overflow-hidden animate-in fade-in duration-150">
+      {/* 1. TOP HEADER BAR */}
+      <header className="h-14 px-6 bg-slate-900 border-b border-slate-800 flex items-center justify-between flex-shrink-0 select-none">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-sky-600 flex items-center justify-center text-white font-black text-sm shadow">
+            TA
+          </div>
           <div>
-            <h2 className="text-base font-bold text-white">
-              Cấu Hình Hệ Thống Điều Phối Nhà Thuốc
-            </h2>
-            <p className="text-xs text-slate-400">
-              Quản trị bố cục hiển thị, danh sách quầy và quy tắc cảnh báo
-            </p>
+            <h1 className="text-sm font-bold text-white tracking-wide">
+              TRUNG TÂM QUẢN TRỊ ĐIỀU PHỐI NHÀ THUỐC
+            </h1>
           </div>
+        </div>
+
+        {/* Global Header Actions */}
+        <div className="flex items-center gap-2.5">
           <button
+            type="button"
+            onClick={handleExportJSON}
+            className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold rounded-lg border border-slate-700 flex items-center gap-1.5 transition"
+            title="Xuất file JSON sao lưu cấu hình"
+          >
+            <FontAwesomeIcon icon={faDownload} className="text-xs" />
+            <span>Xuất JSON</span>
+          </button>
+
+          <label className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold rounded-lg border border-slate-700 flex items-center gap-1.5 cursor-pointer transition">
+            <FontAwesomeIcon icon={faUpload} className="text-xs" />
+            <span>Nhập JSON</span>
+            <input type="file" accept=".json" onChange={handleImportJSON} className="hidden" />
+          </label>
+
+          <button
+            type="button"
+            onClick={handleSaveAndClose}
+            className="px-4 py-1.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-2 transition"
+          >
+            <FontAwesomeIcon icon={faFloppyDisk} className="text-xs" />
+            <span>Lưu Cấu Hình (Ctrl+S)</span>
+          </button>
+
+          <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
+            className="p-1.5 px-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition"
+            title="Đóng (Esc)"
           >
-            <FontAwesomeIcon icon={faXmark} className="text-sm" />
+            <FontAwesomeIcon icon={faXmark} className="text-base" />
           </button>
         </div>
+      </header>
 
-        {/* Tab Navigation (3 Tabs) */}
-        <div className="flex items-center border-b border-slate-800 bg-slate-950/60 px-6 gap-2 pt-2 select-none">
-          {/* Tab 1: Display & Layout (Bộ điều khiển cất vào đây) */}
-          <button
-            onClick={() => setActiveTab('display')}
-            className={`px-4 py-2 text-xs font-semibold rounded-t-lg transition flex items-center gap-2 border-b-2 ${
-              activeTab === 'display'
-                ? 'border-sky-500 text-sky-400 bg-slate-900'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <FontAwesomeIcon icon={faLayerGroup} className="text-xs" />
-            <span>Bố Cục & Tỉ Lệ Màn Hình</span>
-          </button>
-
-          {/* Tab 2: Pharmacies */}
-          <button
-            onClick={() => setActiveTab('pharmacies')}
-            className={`px-4 py-2 text-xs font-semibold rounded-t-lg transition flex items-center gap-2 border-b-2 ${
-              activeTab === 'pharmacies'
-                ? 'border-sky-500 text-sky-400 bg-slate-900'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <FontAwesomeIcon icon={faHospital} className="text-xs" />
-            <span>Danh Sách Quầy ({list.length})</span>
-          </button>
-
-          {/* Tab 3: Rules */}
-          <button
-            onClick={() => setActiveTab('rules')}
-            className={`px-4 py-2 text-xs font-semibold rounded-t-lg transition flex items-center gap-2 border-b-2 ${
-              activeTab === 'rules'
-                ? 'border-sky-500 text-sky-400 bg-slate-900'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <FontAwesomeIcon icon={faScaleBalanced} className="text-xs" />
-            <span>Quy Tắc Cảnh Báo Điều Phối</span>
-          </button>
-
-          {/* Tab 4: Zalo Alerts */}
-          <button
-            onClick={() => setActiveTab('zalo')}
-            className={`px-4 py-2 text-xs font-semibold rounded-t-lg transition flex items-center gap-2 border-b-2 ${
-              activeTab === 'zalo'
-                ? 'border-sky-500 text-sky-400 bg-slate-900'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <FontAwesomeIcon icon={faComments} className="text-xs" />
-            <span>Cảnh Báo Zalo</span>
-          </button>
+      {/* Toast Notification */}
+      {notification && (
+        <div className="bg-emerald-500/10 border-b border-emerald-500/20 px-6 py-2 text-xs font-semibold text-emerald-400 flex items-center gap-2 flex-shrink-0 animate-in fade-in">
+          <FontAwesomeIcon icon={faCheck} className="text-xs" /> {notification}
         </div>
+      )}
 
+      {/* 2. BODY SPLIT: SIDEBAR LEFT + MAIN WORKSPACE RIGHT */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* SIDEBAR NAVIGATION (240px) */}
+        <aside className="w-64 bg-slate-900/70 border-r border-slate-800 flex flex-col justify-between p-3 flex-shrink-0 select-none">
+          <div className="space-y-1">
+            <button
+              type="button"
+              onClick={() => setActiveTab('scenarios')}
+              className={`w-full px-3.5 py-3 rounded-xl text-xs font-bold flex items-center justify-between transition ${
+                activeTab === 'scenarios'
+                  ? 'bg-sky-600 text-white shadow-md'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <FontAwesomeIcon icon={faSliders} className="text-sm" />
+                <span>Kịch Bản Cảnh Báo</span>
+              </div>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                activeTab === 'scenarios' ? 'bg-sky-700 text-white' : 'bg-slate-800 text-slate-400'
+              }`}>
+                {(localRules.scenarios || []).length}
+              </span>
+            </button>
 
-        {/* Notification Toast */}
-        {notification && (
-          <div className="bg-emerald-500/10 border-b border-emerald-500/20 px-6 py-2 text-xs font-semibold text-emerald-400 flex items-center gap-2">
-            <FontAwesomeIcon icon={faCheck} className="text-xs" /> {notification}
+            <button
+              type="button"
+              onClick={() => setActiveTab('pharmacies')}
+              className={`w-full px-3.5 py-3 rounded-xl text-xs font-bold flex items-center justify-between transition ${
+                activeTab === 'pharmacies'
+                  ? 'bg-sky-600 text-white shadow-md'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <FontAwesomeIcon icon={faHospital} className="text-sm" />
+                <span>Danh Sách Quầy</span>
+              </div>
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                activeTab === 'pharmacies' ? 'bg-sky-700 text-white' : 'bg-slate-800 text-slate-400'
+              }`}>
+                {list.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('display')}
+              className={`w-full px-3.5 py-3 rounded-xl text-xs font-bold flex items-center gap-2.5 transition ${
+                activeTab === 'display'
+                  ? 'bg-sky-600 text-white shadow-md'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              <FontAwesomeIcon icon={faLayerGroup} className="text-sm" />
+              <span>Bố Cục & Tỉ Lệ</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('zalo')}
+              className={`w-full px-3.5 py-3 rounded-xl text-xs font-bold flex items-center gap-2.5 transition ${
+                activeTab === 'zalo'
+                  ? 'bg-sky-600 text-white shadow-md'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              <FontAwesomeIcon icon={faComments} className="text-sm" />
+              <span>Kết Nối Zalo</span>
+            </button>
           </div>
-        )}
 
-        {/* Content Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {/* TAB 1: BỐ CỤC & TỈ LỆ HIỂN THỊ */}
-          {activeTab === 'display' && (
-            <div className="space-y-6">
-              {/* Layout mode picker */}
-              <div className="p-4 bg-slate-800/40 border border-slate-700/60 rounded-xl space-y-3">
-                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                  <FontAwesomeIcon icon={faLayerGroup} className="text-sky-400" />
-                  <span>Chọn Bố Cục Chia Lưới Màn Hình:</span>
-                </h3>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
-                  <button
-                    onClick={() => onChangeLayout('grid-4')}
-                    className={`p-3 rounded-xl border text-xs font-semibold flex flex-col items-center gap-2 transition ${
-                      layout === 'grid-4'
-                        ? 'bg-sky-600 text-white border-sky-500 shadow-md'
-                        : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800 hover:text-white'
-                    }`}
-                  >
-                    <FontAwesomeIcon icon={faTableCellsLarge} className="text-base" />
-                    <span>Lưới 4 (2x2) ⭐</span>
-                  </button>
-
-                  <button
-                    onClick={() => onChangeLayout('split-1-3')}
-                    className={`p-3 rounded-xl border text-xs font-semibold flex flex-col items-center gap-2 transition ${
-                      layout === 'split-1-3'
-                        ? 'bg-sky-600 text-white border-sky-500 shadow-md'
-                        : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800 hover:text-white'
-                    }`}
-                  >
-                    <FontAwesomeIcon icon={faSquare} className="text-base" />
-                    <span>1 To + 3 Phụ</span>
-                  </button>
-
-                  <button
-                    onClick={() => onChangeLayout('grid-2')}
-                    className={`p-3 rounded-xl border text-xs font-semibold flex flex-col items-center gap-2 transition ${
-                      layout === 'grid-2'
-                        ? 'bg-sky-600 text-white border-sky-500 shadow-md'
-                        : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800 hover:text-white'
-                    }`}
-                  >
-                    <FontAwesomeIcon icon={faTableColumns} className="text-base" />
-                    <span>Lưới 2 (1x2)</span>
-                  </button>
-
-                  <button
-                    onClick={() => onChangeLayout('grid-6')}
-                    className={`p-3 rounded-xl border text-xs font-semibold flex flex-col items-center gap-2 transition ${
-                      layout === 'grid-6'
-                        ? 'bg-sky-600 text-white border-sky-500 shadow-md'
-                        : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800 hover:text-white'
-                    }`}
-                  >
-                    <FontAwesomeIcon icon={faTableCells} className="text-base" />
-                    <span>Lưới 6 (2x3)</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Global Scale Picker */}
-              <div className="p-4 bg-slate-800/40 border border-slate-700/60 rounded-xl space-y-3">
-                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                  <FontAwesomeIcon icon={faMaximize} className="text-emerald-400" />
-                  <span>Tỉ Lệ Thu Phóng Toàn Bộ Màn Hình TV (Zoom Scale):</span>
-                </h3>
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  Tùy chỉnh tỉ lệ để đảm bảo toàn bộ bảng gọi số QMS hiển thị vừa vặn không bị tràn trên màn hình. Mức <strong>50%</strong> là chuẩn xác nhất cho lưới 4.
-                </p>
-
-                <div className="flex flex-wrap items-center gap-3 pt-1">
-                  <select
-                    value={globalScale}
-                    onChange={(e) => onChangeGlobalScale(parseFloat(e.target.value))}
-                    className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-3 py-2 outline-none focus:border-sky-500 font-mono font-medium"
-                  >
-                    {SCALE_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-
-                  <button
-                    onClick={() => onChangeGlobalScale(0.50)}
-                    className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold rounded-lg shadow transition flex items-center gap-1.5"
-                  >
-                    <FontAwesomeIcon icon={faMaximize} />
-                    <span>Đặt Vừa Khít (50%)</span>
-                  </button>
-                </div>
-              </div>
+          {/* Sidebar Footer Info */}
+          <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 text-[11px] space-y-1.5">
+            <div className="text-slate-400 flex justify-between">
+              <span>Số quầy trực:</span>
+              <strong className="text-white">{list.length}</strong>
             </div>
+            <div className="text-slate-400 flex justify-between">
+              <span>Đang giám sát:</span>
+              <strong className="text-emerald-400">Thời gian thực</strong>
+            </div>
+          </div>
+        </aside>
+
+        {/* WORKSPACE CONTENT AREA */}
+        <main className="flex-1 overflow-y-auto p-8">
+          {/* TAB 1: KỊCH BẢN CẢNH BÁO ĐIỀU PHỐI (TAB CHÍNH MỚI) */}
+          {activeTab === 'scenarios' && (
+            <ScenarioManagementTab
+              scenarios={localRules.scenarios || DEFAULT_SCENARIOS}
+              onChangeScenarios={handleUpdateScenarios}
+              pharmacies={list}
+              onShowToast={showNotification}
+            />
           )}
 
           {/* TAB 2: QUẢN LÝ QUẦY NHÀ THUỐC */}
           {activeTab === 'pharmacies' && (
-            <>
-              <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-slate-800">
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
                 <div className="flex items-center gap-2">
                   <button
+                    type="button"
                     onClick={handleAddNew}
-                    className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition shadow-sm"
+                    className="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition shadow-sm"
                   >
                     <FontAwesomeIcon icon={faPlus} className="text-xs" /> Thêm quầy mới
                   </button>
                   <button
+                    type="button"
                     onClick={handleResetDefaults}
-                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition border border-slate-700"
+                    className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition border border-slate-700"
                   >
                     <FontAwesomeIcon icon={faRotateLeft} className="text-xs" /> Khôi phục 4 Quầy chuẩn
                   </button>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleExportJSON}
-                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition border border-slate-700"
-                    title="Xuất file JSON sao lưu"
-                  >
-                    <FontAwesomeIcon icon={faDownload} className="text-xs" /> Xuất JSON
-                  </button>
-                  <label className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition border border-slate-700 cursor-pointer">
-                    <FontAwesomeIcon icon={faUpload} className="text-xs" /> Nhập JSON
-                    <input
-                      type="file"
-                      accept=".json"
-                      onChange={handleImportJSON}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
+                <span className="text-xs text-slate-400 font-medium">
+                  Đang có <strong className="text-white">{list.length}</strong> quầy phát thuốc
+                </span>
               </div>
 
               {/* List of pharmacies */}
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 {list.map((item, index) => (
                   <div
                     key={item.id}
-                    className={`p-3.5 rounded-xl border transition ${
-                      editingId === item.id 
-                        ? 'bg-slate-800/60 border-sky-500/50' 
-                        : 'bg-slate-800/30 border-slate-800 hover:border-slate-700'
-                    }`}
+                    className="p-3.5 rounded-xl border bg-slate-900/70 border-slate-800 hover:border-slate-700 transition"
                   >
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                       <div className="md:col-span-1 flex items-center gap-2">
@@ -406,7 +391,7 @@ export const ManageModal: React.FC<ManageModalProps> = ({
                           value={item.code}
                           onChange={(e) => handleUpdateItem(item.id, { code: e.target.value })}
                           placeholder="Mã"
-                          className="w-14 bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-xs font-bold text-sky-400 font-mono text-center outline-none focus:border-sky-500"
+                          className="w-14 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1.5 text-xs font-bold text-sky-400 font-mono text-center outline-none focus:border-sky-500"
                         />
                       </div>
 
@@ -418,7 +403,7 @@ export const ManageModal: React.FC<ManageModalProps> = ({
                           type="text"
                           value={item.name}
                           onChange={(e) => handleUpdateItem(item.id, { name: e.target.value })}
-                          className="w-full bg-slate-900 border border-slate-700 rounded-md px-2.5 py-1 text-xs text-white font-medium outline-none focus:border-sky-500"
+                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-medium outline-none focus:border-sky-500"
                         />
                       </div>
 
@@ -431,7 +416,7 @@ export const ManageModal: React.FC<ManageModalProps> = ({
                             type="url"
                             value={item.url}
                             onChange={(e) => handleUpdateItem(item.id, { url: e.target.value })}
-                            className="w-full bg-slate-900 border border-slate-700 rounded-md pl-2.5 pr-8 py-1 text-xs text-sky-300 font-mono outline-none focus:border-sky-500 truncate"
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-2.5 pr-8 py-1.5 text-xs text-sky-300 font-mono outline-none focus:border-sky-500 truncate"
                           />
                           <a
                             href={item.url}
@@ -446,179 +431,127 @@ export const ManageModal: React.FC<ManageModalProps> = ({
                       </div>
 
                       <div className="md:col-span-3 flex items-center justify-between gap-2 mt-2 md:mt-4">
-                        <div>
-                          <select
-                            value={item.scale}
-                            onChange={(e) => handleUpdateItem(item.id, { scale: parseFloat(e.target.value) })}
-                            className="bg-slate-900 border border-slate-700 text-slate-300 text-xs rounded-md px-2 py-1 outline-none focus:border-sky-500 font-mono"
-                          >
-                            {SCALE_OPTIONS.map((opt) => (
-                              <option key={opt.value} value={opt.value}>
-                                Zoom: {opt.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                        <select
+                          value={item.scale}
+                          onChange={(e) =>
+                            handleUpdateItem(item.id, { scale: parseFloat(e.target.value) })
+                          }
+                          className="bg-slate-950 border border-slate-700 text-slate-300 text-xs rounded-lg px-2.5 py-1.5 outline-none focus:border-sky-500 font-mono"
+                        >
+                          {SCALE_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              Zoom: {opt.label}
+                            </option>
+                          ))}
+                        </select>
 
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => handleDelete(item.id)}
-                            className="p-1.5 text-rose-400 hover:text-white hover:bg-rose-500/20 rounded-md transition"
-                            title="Xóa quầy này"
-                          >
-                            <FontAwesomeIcon icon={faTrashCan} className="text-xs" />
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(item.id)}
+                          className="p-1.5 text-rose-400 hover:text-white hover:bg-rose-500/20 rounded-lg transition"
+                          title="Xóa quầy này"
+                        >
+                          <FontAwesomeIcon icon={faTrashCan} className="text-xs" />
+                        </button>
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
-            </>
+            </div>
           )}
 
-          {/* TAB 3: RULES & THRESHOLDS */}
-          {activeTab === 'rules' && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60 space-y-3">
-                  <div className="flex items-center gap-2.5 text-sky-400 font-semibold text-sm">
-                    <FontAwesomeIcon icon={faDesktop} />
-                    <h3>1. Tải Trọng Quầy (Khách / Quầy)</h3>
-                  </div>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    Số lượng khách chờ tối đa trên mỗi quầy đang phục vụ. Khi vượt ngưỡng, hệ thống sẽ cảnh báo mở thêm quầy.
-                  </p>
-                  <div className="flex items-center gap-3 pt-1">
-                    <input
-                      type="number"
-                      min={1}
-                      max={15}
-                      value={localRules.maxWaitingPerCounter}
-                      onChange={(e) => setLocalRules({ ...localRules, maxWaitingPerCounter: parseInt(e.target.value) || 1 })}
-                      className="w-20 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-sm font-bold text-white text-center outline-none focus:border-sky-500"
-                    />
-                    <span className="text-xs text-slate-400 font-medium">
-                      khách chờ / 1 quầy mở (Mặc định: 3)
-                    </span>
-                  </div>
-                </div>
+          {/* TAB 3: BỐ CỤC & TỈ LỆ HIỂN THỊ (SẠCH SẼ, KHÔNG TEXT DÀI DÒNG) */}
+          {activeTab === 'display' && (
+            <div className="space-y-6 max-w-4xl">
+              {/* Layout mode picker */}
+              <div className="p-5 bg-slate-900/80 border border-slate-800 rounded-2xl space-y-3.5">
+                <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                  <FontAwesomeIcon icon={faLayerGroup} className="text-sky-400" />
+                  <span>Bố Cục Chia Lưới Màn Hình TV:</span>
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => onChangeLayout('grid-4')}
+                    className={`p-4 rounded-xl border text-xs font-bold flex flex-col items-center gap-2.5 transition ${
+                      layout === 'grid-4'
+                        ? 'bg-sky-600 text-white border-sky-500 shadow-md'
+                        : 'bg-slate-950 text-slate-300 border-slate-800 hover:bg-slate-900 hover:text-white'
+                    }`}
+                  >
+                    <FontAwesomeIcon icon={faTableCellsLarge} className="text-lg" />
+                    <span>Lưới 4 (2x2) ⭐</span>
+                  </button>
 
-                <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60 space-y-3">
-                  <div className="flex items-center gap-2.5 text-amber-400 font-semibold text-sm">
-                    <FontAwesomeIcon icon={faScaleBalanced} />
-                    <h3>2. Độ Lệch Tải Giữa Nhà Thuốc 1 & 2</h3>
-                  </div>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    Độ chênh lệch số lượng khách chờ tối đa giữa Nhà thuốc 1 và Nhà thuốc 2 trước khi kích hoạt cảnh báo hướng dẫn điều phối.
-                  </p>
-                  <div className="flex items-center gap-3 pt-1">
-                    <input
-                      type="number"
-                      min={1}
-                      max={10}
-                      value={localRules.maxImbalanceNT1NT2}
-                      onChange={(e) => setLocalRules({ ...localRules, maxImbalanceNT1NT2: parseInt(e.target.value) || 1 })}
-                      className="w-20 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-sm font-bold text-white text-center outline-none focus:border-amber-500"
-                    />
-                    <span className="text-xs text-slate-400 font-medium">
-                      khách chênh lệch (Mặc định: 2)
-                    </span>
-                  </div>
-                </div>
+                  <button
+                    type="button"
+                    onClick={() => onChangeLayout('split-1-3')}
+                    className={`p-4 rounded-xl border text-xs font-bold flex flex-col items-center gap-2.5 transition ${
+                      layout === 'split-1-3'
+                        ? 'bg-sky-600 text-white border-sky-500 shadow-md'
+                        : 'bg-slate-950 text-slate-300 border-slate-800 hover:bg-slate-900 hover:text-white'
+                    }`}
+                  >
+                    <FontAwesomeIcon icon={faSquare} className="text-lg" />
+                    <span>1 To + 3 Phụ</span>
+                  </button>
 
-                <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60 space-y-3">
-                  <div className="flex items-center gap-2.5 text-rose-400 font-semibold text-sm">
-                    <FontAwesomeIcon icon={faTriangleExclamation} />
-                    <h3>3. Ngưỡng Đông Khách Tuyệt Đối</h3>
-                  </div>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    Số lượng khách chờ tại 1 nhà thuốc để coi là bước vào đợt cao điểm đông khách.
-                  </p>
-                  <div className="flex items-center gap-3 pt-1">
-                    <input
-                      type="number"
-                      min={2}
-                      max={30}
-                      value={localRules.crowdedThreshold}
-                      onChange={(e) => setLocalRules({ ...localRules, crowdedThreshold: parseInt(e.target.value) || 2 })}
-                      className="w-20 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-sm font-bold text-white text-center outline-none focus:border-rose-500"
-                    />
-                    <span className="text-xs text-slate-400 font-medium">
-                      khách chờ (Mặc định: 5)
-                    </span>
-                  </div>
-                </div>
+                  <button
+                    type="button"
+                    onClick={() => onChangeLayout('grid-2')}
+                    className={`p-4 rounded-xl border text-xs font-bold flex flex-col items-center gap-2.5 transition ${
+                      layout === 'grid-2'
+                        ? 'bg-sky-600 text-white border-sky-500 shadow-md'
+                        : 'bg-slate-950 text-slate-300 border-slate-800 hover:bg-slate-900 hover:text-white'
+                    }`}
+                  >
+                    <FontAwesomeIcon icon={faTableColumns} className="text-lg" />
+                    <span>Lưới 2 (1x2)</span>
+                  </button>
 
-                <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60 space-y-3">
-                  <div className="flex items-center gap-2.5 text-emerald-400 font-semibold text-sm">
-                    <FontAwesomeIcon icon={faVolumeHigh} />
-                    <h3>4. Chuông Cảnh Báo Âm Thanh</h3>
-                  </div>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    Tự động phát chuông chuẩn y tế khi có biến động tải hoặc khi mở thêm quầy mới.
-                  </p>
-                  <div className="flex items-center gap-3 pt-1">
-                    <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-white">
-                      <input
-                        type="checkbox"
-                        checked={localRules.soundEnabled}
-                        onChange={(e) => setLocalRules({ ...localRules, soundEnabled: e.target.checked })}
-                        className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500 bg-slate-900 border-slate-700"
-                      />
-                      <span>Bật chuông âm thanh</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60 space-y-3">
-                  <div className="flex items-center gap-2.5 text-purple-400 font-semibold text-sm">
-                    <FontAwesomeIcon icon={faClock} />
-                    <h3>5. Độ Trễ Báo "Chưa Mở Quầy" (Tình huống 5)</h3>
-                  </div>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    Khi đang không có khách, nếu có khách mới xuất hiện nhưng chưa được gọi vào quầy, hệ thống sẽ chờ hết số giây này mới phát cảnh báo (tránh báo ảo khi nhân viên chuẩn bị bấm gọi).
-                  </p>
-                  <div className="flex items-center gap-3 pt-1">
-                    <input
-                      type="number"
-                      min={5}
-                      max={600}
-                      step={5}
-                      value={localRules.noCounterAlertDelaySeconds ?? 60}
-                      onChange={(e) => setLocalRules({ ...localRules, noCounterAlertDelaySeconds: Math.max(0, parseInt(e.target.value) || 0) })}
-                      className="w-24 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-sm font-bold text-white text-center outline-none focus:border-purple-500"
-                    />
-                    <span className="text-xs text-slate-400 font-medium">
-                      giây ({Math.floor((localRules.noCounterAlertDelaySeconds ?? 60) / 60)} phút {(localRules.noCounterAlertDelaySeconds ?? 60) % 60}s) (Mặc định: 60s)
-                    </span>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onChangeLayout('grid-6')}
+                    className={`p-4 rounded-xl border text-xs font-bold flex flex-col items-center gap-2.5 transition ${
+                      layout === 'grid-6'
+                        ? 'bg-sky-600 text-white border-sky-500 shadow-md'
+                        : 'bg-slate-950 text-slate-300 border-slate-800 hover:bg-slate-900 hover:text-white'
+                    }`}
+                  >
+                    <FontAwesomeIcon icon={faTableCells} className="text-lg" />
+                    <span>Lưới 6 (2x3)</span>
+                  </button>
                 </div>
               </div>
 
-              {/* Sound Test Panel */}
-              <div className="p-4 bg-slate-950/70 rounded-xl border border-slate-800 space-y-2.5">
-                <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                  Thử Nghiệm Hợp Âm Chuông Thông Báo:
-                </h4>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => handleTestSound('danger')}
-                    className="px-3 py-1.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs font-semibold rounded-lg border border-rose-500/30 transition flex items-center gap-1.5"
+              {/* Global Scale Picker */}
+              <div className="p-5 bg-slate-900/80 border border-slate-800 rounded-2xl space-y-3.5">
+                <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                  <FontAwesomeIcon icon={faMaximize} className="text-emerald-400" />
+                  <span>Tỉ Lệ Thu Phóng Toàn Bộ Màn Hình (Global Zoom):</span>
+                </h3>
+
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  <select
+                    value={globalScale}
+                    onChange={(e) => onChangeGlobalScale(parseFloat(e.target.value))}
+                    className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded-xl px-4 py-2.5 outline-none focus:border-sky-500 font-mono font-medium"
                   >
-                    <FontAwesomeIcon icon={faTriangleExclamation} /> Chuông Quá Tải
-                  </button>
+                    {SCALE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+
                   <button
-                    onClick={() => handleTestSound('imbalance')}
-                    className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-semibold rounded-lg border border-amber-500/30 transition flex items-center gap-1.5"
+                    type="button"
+                    onClick={() => onChangeGlobalScale(0.50)}
+                    className="px-4 py-2.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold rounded-xl shadow transition flex items-center gap-2"
                   >
-                    <FontAwesomeIcon icon={faScaleBalanced} /> Chuông Lệch Tải NT1 - NT2
-                  </button>
-                  <button
-                    onClick={() => handleTestSound('success')}
-                    className="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-xs font-semibold rounded-lg border border-emerald-500/30 transition flex items-center gap-1.5"
-                  >
-                    <FontAwesomeIcon icon={faCheck} /> Chuông Mở Thêm Quầy
+                    <FontAwesomeIcon icon={faMaximize} />
+                    <span>Đặt Vừa Khít (50%)</span>
                   </button>
                 </div>
               </div>
@@ -626,43 +559,8 @@ export const ManageModal: React.FC<ManageModalProps> = ({
           )}
 
           {/* TAB 4: CẢNH BÁO QUA ZALO */}
-          {activeTab === 'zalo' && (
-            <ZaloSettingsTab />
-          )}
-
-          {/* Quick Notice */}
-
-          <div className="p-3 bg-sky-500/5 border border-sky-500/20 rounded-xl flex items-start gap-2.5 text-xs text-slate-300">
-            <FontAwesomeIcon icon={faShieldHalved} className="text-sm text-sky-400 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold text-white">An toàn & Bảo mật Nội bộ:</p>
-              <p className="text-slate-400 mt-0.5">
-                Cấu hình được lưu trữ an toàn trong máy tính, bảo vệ bằng mật khẩu <strong>PhongCSKH@</strong>.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-3.5 border-t border-slate-800 bg-slate-900/90">
-          <span className="text-xs text-slate-400">
-            Hệ thống: <strong className="text-white">{list.length} quầy</strong> | Tải trọng: <strong className="text-white">{localRules.maxWaitingPerCounter} khách/quầy</strong>
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition"
-            >
-              Hủy bỏ
-            </button>
-            <button
-              onClick={handleSaveAndClose}
-              className="px-5 py-2 text-xs font-semibold bg-sky-600 hover:bg-sky-500 text-white rounded-lg shadow-sm transition"
-            >
-              Lưu cấu hình
-            </button>
-          </div>
-        </div>
+          {activeTab === 'zalo' && <ZaloSettingsTab />}
+        </main>
       </div>
     </div>
   );

@@ -59,7 +59,13 @@ export const App: React.FC = () => {
   const [rules, setRules] = useState<DispatchRules>(() => {
     try {
       const saved = localStorage.getItem('dieu_phoi_rules');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (!parsed.scenarios || !Array.isArray(parsed.scenarios) || parsed.scenarios.length === 0) {
+          parsed.scenarios = DEFAULT_RULES.scenarios;
+        }
+        return parsed;
+      }
     } catch (e) {
       console.error(e);
     }
@@ -244,9 +250,21 @@ export const App: React.FC = () => {
           soundManager.play(soundType);
         }
 
-        // Tự động chuyển tiếp cảnh báo đến Zalo cá nhân / nhóm với Rich Text Style & Màu Sắc
+        // Tự động chuyển tiếp cảnh báo đến Zalo cá nhân / nhóm với Rich Text Style, Màu Sắc & Tag Nhân Sự
         for (const alert of newAlerts) {
-          if (alert.type === 'overload') {
+          if (alert.zaloPayload) {
+            dispatchZaloAlert({
+              alertKey: alert.id,
+              message: alert.zaloPayload.message,
+              styles: alert.zaloPayload.styles,
+              urgency: alert.zaloPayload.urgency,
+              mentions: alert.zaloPayload.mentions,
+              forceSend: alert.type === 'reinforced' || alert.type === 'low_traffic',
+            });
+            if (alert.pharmacyId && (alert.type === 'overload' || alert.type === 'no_counter')) {
+              prevOverloadedPhsRef.current.add(alert.pharmacyId);
+            }
+          } else if (alert.type === 'overload') {
             const ph = updatedList.find((p) => p.id === alert.pharmacyId);
             const formatted = formatZaloOverloadAlert({
               pharmacyName: alert.pharmacyName || ph?.name || 'Nhà thuốc',

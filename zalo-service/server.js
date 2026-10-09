@@ -364,8 +364,47 @@ app.get('/api/contacts', async (req, res) => {
   }
 });
 
+// 5.1 Get Group Members for Mentioning
+app.get('/api/group-members', async (req, res) => {
+  if (!zaloApi) {
+    return res.status(401).json({ error: 'Chưa đăng nhập Zalo' });
+  }
+
+  const groupId = req.query.groupId || alertConfig.targetId;
+  if (!groupId) {
+    return res.status(400).json({ error: 'Thiếu groupId' });
+  }
+
+  try {
+    const infoResp = await zaloApi.getGroupInfo(groupId);
+    const groupInfo = infoResp?.gridInfoMap?.[groupId];
+    const memList = groupInfo?.memVerList || [];
+    if (!memList || memList.length === 0) {
+      return res.json({ members: [] });
+    }
+
+    // memVerList may contain items like "uid_0" or pure uid
+    const uids = memList.map((m) => (typeof m === 'string' ? m.split('_')[0] : m));
+    // Chunk requests if there are too many members
+    const chunkUids = uids.slice(0, 100);
+    const membersInfo = await zaloApi.getGroupMembersInfo(chunkUids);
+    const profiles = membersInfo?.profiles || {};
+
+    const members = Object.keys(profiles).map((uid) => ({
+      uid,
+      name: profiles[uid].displayName || profiles[uid].zaloName || 'Thành viên',
+      avatar: profiles[uid].avatar || '',
+    }));
+
+    res.json({ members });
+  } catch (err) {
+    console.error('[Zalo Service] Lỗi lấy danh sách thành viên nhóm:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Helper to send message
-async function executeSendMessage(text, targetType, targetId, styles = [], urgency = 2) {
+async function executeSendMessage(text, targetType, targetId, styles = [], urgency = 2, mentions = []) {
   if (!zaloApi) {
     throw new Error('Chưa đăng nhập Zalo');
   }
@@ -376,7 +415,7 @@ async function executeSendMessage(text, targetType, targetId, styles = [], urgen
   }
 
   const threadType = targetType === 'group' ? ThreadType.Group : ThreadType.User;
-  console.log(`[Zalo Service] Đang gửi tin đến: ${destinationId} (Loại: ${targetType}, Styles: ${styles?.length || 0})...`);
+  console.log(`[Zalo Service] Đang gửi tin đến: ${destinationId} (Loại: ${targetType}, Styles: ${styles?.length || 0}, Mentions: ${mentions?.length || 0}, Urgency: ${urgency})...`);
   
   const payload = {
     msg: text,
@@ -384,6 +423,9 @@ async function executeSendMessage(text, targetType, targetId, styles = [], urgen
   };
   if (Array.isArray(styles) && styles.length > 0) {
     payload.styles = styles;
+  }
+  if (Array.isArray(mentions) && mentions.length > 0) {
+    payload.mentions = mentions;
   }
 
   const result = await zaloApi.sendMessage(
@@ -405,11 +447,10 @@ app.post('/api/send-alert', async (req, res) => {
     return res.status(401).json({ error: 'Chưa đăng nhập Zalo trên máy tính' });
   }
 
-  const { alertKey, message, styles = [], urgency = 2, isResolved = false, forceSend = false } = req.body;
+  const { alertKey, message, styles = [], urgency = 2, mentions = [], isResolved = false, forceSend = false } = req.body;
   if (!message) {
     return res.status(400).json({ error: 'Thiếu nội dung tin nhắn cảnh báo' });
   }
-
 
   const now = Date.now();
   const cooldownMs = (alertConfig.cooldownMinutes || 3) * 60 * 1000;
@@ -434,7 +475,7 @@ app.post('/api/send-alert', async (req, res) => {
     const targetType = alertConfig.targetType;
     const targetId = alertConfig.targetId;
 
-    const result = await executeSendMessage(message, targetType, targetId, styles, urgency);
+    const result = await executeSendMessage(message, targetType, targetId, styles, urgency, mentions);
     
     // Update history
     if (alertKey) {
