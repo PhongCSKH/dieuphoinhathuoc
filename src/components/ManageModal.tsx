@@ -59,17 +59,19 @@ export const ManageModal: React.FC<ManageModalProps> = ({
     };
   });
   const [notification, setNotification] = useState<string | null>(null);
+  const wasOpenRef = React.useRef(false);
 
-  // Sync state khi mở modal
+  // Chỉ sync state khi modal vừa chuyển từ ĐÓNG sang MỞ (tránh bị telemetry ghi đè trong lúc đang sửa)
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !wasOpenRef.current) {
       setList(pharmacies);
       setLocalRules({
         ...rules,
         scenarios: rules.scenarios && rules.scenarios.length > 0 ? rules.scenarios : DEFAULT_SCENARIOS,
       });
     }
-  }, [isOpen, pharmacies, rules]);
+    wasOpenRef.current = isOpen;
+  }, [isOpen]);
 
   // Phím tắt Esc và Ctrl+S
   useEffect(() => {
@@ -186,9 +188,23 @@ export const ManageModal: React.FC<ManageModalProps> = ({
   };
 
   const handleUpdateScenarios = (newScenarios: AlertScenario[]) => {
-    setLocalRules({
-      ...localRules,
-      scenarios: newScenarios,
+    const scOverload = newScenarios.find((s) => s.type === 'overload');
+    const scNoCounter = newScenarios.find((s) => s.type === 'no_counter');
+    const scImbalance = newScenarios.find((s) => s.type === 'imbalance');
+    const scCrowded = newScenarios.find((s) => s.type === 'crowded');
+
+    setLocalRules((prev) => {
+      const updated: DispatchRules = {
+        ...prev,
+        scenarios: newScenarios,
+        maxWaitingPerCounter: scOverload?.thresholds?.value ?? prev.maxWaitingPerCounter,
+        noCounterAlertDelaySeconds: scNoCounter?.thresholds?.delaySeconds ?? prev.noCounterAlertDelaySeconds,
+        maxImbalanceNT1NT2: scImbalance?.thresholds?.value ?? prev.maxImbalanceNT1NT2,
+        crowdedThreshold: scCrowded?.thresholds?.value ?? prev.crowdedThreshold,
+      };
+      // Tự động lưu ngay lập tức vào App state & LocalStorage
+      onSaveRules(updated);
+      return updated;
     });
   };
 
