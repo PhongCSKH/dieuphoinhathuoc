@@ -414,17 +414,18 @@ app.post('/api/send-alert', async (req, res) => {
   const now = Date.now();
   const cooldownMs = (alertConfig.cooldownMinutes || 3) * 60 * 1000;
 
-  // Smart Check:
-  // - If alertKey is new -> SEND IMMEDIATELY!
-  // - If isResolved -> SEND IMMEDIATELY!
-  // - If forceSend -> SEND IMMEDIATELY!
-  // - If already sent within cooldown and message content has not changed -> Skip to avoid flooding
+  // Smart Cooldown & Deduplication:
+  // - If forceSend -> Gửi ngay lập tức!
+  // - If isResolved -> Gửi ngay lập tức và xóa lịch sử quá tải!
+  // - Nếu cùng alertKey và chưa hết thời gian cooldown -> Bỏ qua để chống spam lặp lại liên tục
   if (!forceSend && !isResolved && alertKey) {
     const lastSent = alertHistory.get(alertKey);
-    if (lastSent && (now - lastSent.timestamp < cooldownMs) && lastSent.message === message) {
+    if (lastSent && (now - lastSent.timestamp < cooldownMs)) {
+      const remainingSec = Math.round((cooldownMs - (now - lastSent.timestamp)) / 1000);
+      console.log(`[Zalo Service] Giãn cách cảnh báo [${alertKey}] - Còn ${remainingSec}s nữa mới nhắc lại (Cooldown: ${alertConfig.cooldownMinutes || 3} phút)`);
       return res.json({
         skipped: true,
-        reason: `Cảnh báo ${alertKey} đã gửi cách đây ${Math.round((now - lastSent.timestamp) / 1000)}s (Đang trong chu kỳ cooldown)`,
+        reason: `Cảnh báo ${alertKey} đang trong chu kỳ giãn cách (còn ${remainingSec}s)`,
       });
     }
   }
@@ -439,8 +440,10 @@ app.post('/api/send-alert', async (req, res) => {
     if (alertKey) {
       if (isResolved) {
         alertHistory.delete(alertKey);
+        console.log(`[Zalo Service] Đã hạ tải và giải phóng cảnh báo [${alertKey}]`);
       } else {
         alertHistory.set(alertKey, { timestamp: now, message });
+        console.log(`[Zalo Service] Đã gửi cảnh báo thành công [${alertKey}]`);
       }
     }
 
