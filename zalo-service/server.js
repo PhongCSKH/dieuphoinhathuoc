@@ -493,6 +493,15 @@ app.post('/api/test-alert', async (req, res) => {
   }
 });
 
+// Chống crash: Bắt mọi ngoại lệ để dịch vụ chạy bền bỉ 24/7
+process.on('uncaughtException', (err) => {
+  console.error('[Zalo Service] Đã ngăn chặn lỗi ngoại lệ (Uncaught Exception):', err?.message || err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[Zalo Service] Đã ngăn chặn lỗi Promise (Unhandled Rejection):', reason?.message || reason);
+});
+
 // Start Express Server
 app.listen(PORT, async () => {
   console.log(`====================================================`);
@@ -502,4 +511,13 @@ app.listen(PORT, async () => {
   
   // Try auto-login on startup
   await tryAutoLogin();
+
+  // Tự động kiểm tra và phục hồi kết nối định kỳ mỗi 60 giây
+  setInterval(async () => {
+    if (!zaloApi || qrStatus !== 'ready') {
+      console.log('[Zalo Service] Phát hiện mất kết nối Zalo, đang tự động phục hồi...');
+      await tryAutoLogin();
+    }
+  }, 60 * 1000);
 });
+
