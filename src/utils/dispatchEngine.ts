@@ -10,6 +10,8 @@ interface OverloadBaseline {
 const baselineMap = new Map<string, OverloadBaseline>();
 // Lưu thời điểm xuất hiện khách chờ đầu tiên khi chưa có quầy mở (ms)
 const noCounterStartMap = new Map<string, number>();
+// Theo dõi nhà thuốc đã từng xảy ra quá tải (chỉ gửi vãn khách khi trước đó từng bị quá tải)
+const hadOverloadHistorySet = new Set<string>();
 // Theo dõi nhà thuốc đã báo vãn khách để tránh gửi lặp liên tục
 const lowTrafficReportedSet = new Set<string>();
 
@@ -71,6 +73,9 @@ export function evaluateDispatchRules(
     const isOverloaded = counterCount > 0 && waiting > counterCount * rules.maxWaitingPerCounter;
 
     if (isOverloaded) {
+      // Đánh dấu nhà thuốc đã từng có biến cố quá tải
+      hadOverloadHistorySet.add(p.id);
+
       const neededCounters = Math.ceil(waiting / rules.maxWaitingPerCounter) - counterCount;
 
       // Lưu mốc ban đầu nếu là lần đầu quá tải
@@ -195,8 +200,8 @@ export function evaluateDispatchRules(
         });
         if (highestSound !== 'danger') highestSound = 'warning';
       } 
-      // Tình huống 6: Vãn khách hoàn toàn (khi mở ≥ 3 quầy nhưng khách ≤ 1 - báo 1 lần chuyển trạng thái)
-      else if (waiting <= 1 && counterCount >= 3) {
+      // Tình huống 6: Vãn khách hoàn toàn (chỉ xuất hiện khi trước đó ĐÃ TỪNG QUÁ TẢI, và hiện đang mở ≥ 3 quầy nhưng khách ≤ 1)
+      else if (waiting <= 1 && counterCount >= 3 && hadOverloadHistorySet.has(p.id)) {
         if (!lowTrafficReportedSet.has(p.id)) {
           alerts.push({
             id: `low-traffic-${p.id}`,
@@ -213,12 +218,18 @@ export function evaluateDispatchRules(
             },
           });
           lowTrafficReportedSet.add(p.id);
+          // Đã hoàn tất báo vãn khách cho chu kỳ quá tải trước đó -> Xóa cờ lịch sử
+          hadOverloadHistorySet.delete(p.id);
         }
       }
 
       // Reset cờ vãn khách nếu khách tăng trở lại hoặc số quầy thu hẹp
       if (waiting > 1 || counterCount < 3) {
         lowTrafficReportedSet.delete(p.id);
+      }
+      // Nếu số quầy giảm dưới 3 thì cũng hủy cờ chờ vãn khách
+      if (counterCount < 3) {
+        hadOverloadHistorySet.delete(p.id);
       }
     }
   }
