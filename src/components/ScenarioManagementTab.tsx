@@ -18,6 +18,7 @@ import { soundManager } from '../utils/audio';
 import { dispatchZaloAlert } from '../utils/zalo';
 import { compileZaloMessage } from '../utils/zaloTextCompiler';
 import { buildAllVariables } from '../utils/dispatchEngine';
+import { generateDispatchSnapshot } from '../utils/snapshotGenerator';
 
 interface ScenarioManagementTabProps {
   scenarios: AlertScenario[];
@@ -118,6 +119,17 @@ export const ScenarioManagementTab: React.FC<ScenarioManagementTabProps> = ({
       sc.zalo.styles
     );
 
+    let imageBase64: string | undefined = undefined;
+    if (sc.zalo.attachScreenshot) {
+      const snap = await generateDispatchSnapshot({
+        pharmacies: _pharmacies || [],
+        targetPharmacyId: primaryPh?.id,
+        mode: sc.zalo.screenshotMode || 'all',
+        alertTitle: `[THỬ NGHIỆM] ${sc.name}`,
+      });
+      if (snap) imageBase64 = snap;
+    }
+
     const res = await dispatchZaloAlert({
       alertKey: `test-${sc.id}-${Date.now()}`,
       message: compiled.message,
@@ -125,6 +137,7 @@ export const ScenarioManagementTab: React.FC<ScenarioManagementTabProps> = ({
       urgency: sc.zalo.urgency,
       mentions: compiled.mentions,
       forceSend: true,
+      imageBase64,
     });
 
     if (res.success) {

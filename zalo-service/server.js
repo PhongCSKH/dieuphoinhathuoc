@@ -31,7 +31,8 @@ const LOCAL_CONFIG_FILE = path.join(__dirname, 'config.json');
 
 const app = express();
 app.use(cors({ origin: '*' }));
-app.use(express.json());
+app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
 // Global state
 let zaloInstance = new Zalo();
@@ -404,7 +405,7 @@ app.get('/api/group-members', async (req, res) => {
 });
 
 // Helper to send message
-async function executeSendMessage(text, targetType, targetId, styles = [], urgency = 2, mentions = []) {
+async function executeSendMessage(text, targetType, targetId, styles = [], urgency = 2, mentions = [], imageBase64 = null) {
   if (!zaloApi) {
     throw new Error('Chưa đăng nhập Zalo');
   }
@@ -415,7 +416,7 @@ async function executeSendMessage(text, targetType, targetId, styles = [], urgen
   }
 
   const threadType = targetType === 'group' ? ThreadType.Group : ThreadType.User;
-  console.log(`[Zalo Service] Đang gửi tin đến: ${destinationId} (Loại: ${targetType}, Styles: ${styles?.length || 0}, Mentions: ${mentions?.length || 0}, Urgency: ${urgency})...`);
+  console.log(`[Zalo Service] Đang gửi tin đến: ${destinationId} (Loại: ${targetType}, Styles: ${styles?.length || 0}, Mentions: ${mentions?.length || 0}, Urgency: ${urgency}, HasImage: ${!!imageBase64})...`);
   
   const payload = {
     msg: text,
@@ -426,6 +427,29 @@ async function executeSendMessage(text, targetType, targetId, styles = [], urgen
   }
   if (Array.isArray(mentions) && mentions.length > 0) {
     payload.mentions = mentions;
+  }
+
+  // Xử lý đính kèm ảnh nếu có (Base64 JPEG/PNG)
+  if (imageBase64) {
+    try {
+      const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+      const buffer = Buffer.from(cleanBase64, 'base64');
+      const filename = `snapshot_${Date.now()}.jpg`;
+
+      // zca-js Attachment format
+      payload.attachments = [
+        {
+          data: buffer,
+          filename: filename,
+          metadata: {
+            totalSize: buffer.length,
+          },
+        },
+      ];
+      console.log(`[Zalo Service] Đã đính kèm ảnh chụp màn hình (${Math.round(buffer.length / 1024)} KB)`);
+    } catch (imgErr) {
+      console.error('[Zalo Service] Lỗi xử lý đính kèm ảnh:', imgErr.message);
+    }
   }
 
   const result = await zaloApi.sendMessage(
@@ -447,7 +471,7 @@ app.post('/api/send-alert', async (req, res) => {
     return res.status(401).json({ error: 'Chưa đăng nhập Zalo trên máy tính' });
   }
 
-  const { alertKey, message, styles = [], urgency = 2, mentions = [], isResolved = false, forceSend = false } = req.body;
+  const { alertKey, message, styles = [], urgency = 2, mentions = [], isResolved = false, forceSend = false, imageBase64 = null } = req.body;
   if (!message) {
     return res.status(400).json({ error: 'Thiếu nội dung tin nhắn cảnh báo' });
   }
@@ -475,7 +499,7 @@ app.post('/api/send-alert', async (req, res) => {
     const targetType = alertConfig.targetType;
     const targetId = alertConfig.targetId;
 
-    const result = await executeSendMessage(message, targetType, targetId, styles, urgency, mentions);
+    const result = await executeSendMessage(message, targetType, targetId, styles, urgency, mentions, imageBase64);
     
     // Update history
     if (alertKey) {
@@ -512,12 +536,14 @@ app.post('/api/test-alert', async (req, res) => {
   }
 
   try {
+    const { imageBase64 = null } = req.body || {};
     const nowStr = new Date().toLocaleTimeString('vi-VN');
     const title = `[THỬ NGHIỆM - ĐIỀU PHỐI NHÀ THUỐC]`;
     const testMsg = `${title}\n` +
       `• Kết nối: Thành công giữa Web Dashboard và Zalo\n` +
       `• Người nhận: ${alertConfig.targetName || 'Zalo của bạn'}\n` +
       `• Tình trạng: Hệ thống giám sát tự động hoạt động bình thường\n` +
+      (imageBase64 ? `• Hình ảnh đính kèm: Đã chụp và đính kèm snapshot màn hình\n` : '') +
       `• Thời gian: ${nowStr}`;
 
     const styles = [
@@ -526,7 +552,7 @@ app.post('/api/test-alert', async (req, res) => {
       { start: 0, len: title.length, st: 'f_18' },
     ];
 
-    const result = await executeSendMessage(testMsg, alertConfig.targetType, alertConfig.targetId, styles, 0);
+    const result = await executeSendMessage(testMsg, alertConfig.targetType, alertConfig.targetId, styles, 0, [], imageBase64);
     res.json({ success: true, message: 'Đã gửi tin nhắn thử nghiệm thành công!', result });
   } catch (err) {
     console.error('[Zalo Service] Lỗi gửi test:', err);

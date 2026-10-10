@@ -61,6 +61,8 @@ export interface AlertScenario {
     mentionMembers: ZaloGroupMember[];
     messageTemplate: string;
     styles?: ZaloStyleItem[];
+    attachScreenshot?: boolean; // Tự động đính kèm ảnh chụp màn hình khi gửi tin
+    screenshotMode?: 'single' | 'all'; // 'single': quầy gặp sự cố, 'all': toàn bộ các nhà thuốc
   };
 }
 
@@ -90,6 +92,9 @@ export interface DispatchAlert {
     styles?: ZaloStyleItem[];
     mentions?: ZaloMentionItem[];
     cooldownMinutes?: number;
+    attachScreenshot?: boolean;
+    screenshotMode?: 'single' | 'all';
+    imageBase64?: string;
   };
   metadata?: {
     addedCounters?: string[];

@@ -15,6 +15,7 @@ import {
   dispatchZaloAlert, 
   formatZaloResolvedAlert,
 } from './utils/zalo';
+import { generateDispatchSnapshot } from './utils/snapshotGenerator';
 
 export const App: React.FC = () => {
   // Set custom favicon
@@ -254,6 +255,21 @@ export const App: React.FC = () => {
 
           // Chỉ gửi tin nhắn khi kịch bản được kích hoạt và BẬT gửi Zalo
           if (alert.zaloPayload) {
+            let imageBase64: string | undefined = undefined;
+
+            // Nếu kịch bản yêu cầu đính kèm ảnh chụp màn hình
+            if (alert.zaloPayload.attachScreenshot) {
+              const snapshot = await generateDispatchSnapshot({
+                pharmacies: updatedList,
+                targetPharmacyId: alert.pharmacyId,
+                mode: alert.zaloPayload.screenshotMode || 'all',
+                alertTitle: alert.message,
+              });
+              if (snapshot) {
+                imageBase64 = snapshot;
+              }
+            }
+
             dispatchZaloAlert({
               alertKey: alert.id,
               message: alert.zaloPayload.message,
@@ -261,6 +277,7 @@ export const App: React.FC = () => {
               urgency: alert.zaloPayload.urgency,
               mentions: alert.zaloPayload.mentions,
               forceSend: alert.type === 'reinforced' || alert.type === 'low_traffic',
+              imageBase64,
             });
           }
         }

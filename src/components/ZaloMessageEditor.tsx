@@ -12,6 +12,7 @@ import {
   faTrashCan,
   faCheck,
   faPlus,
+  faCamera,
 } from '@fortawesome/free-solid-svg-icons';
 import { AlertScenario, ZaloGroupMember } from '../types';
 import {
@@ -272,7 +273,68 @@ export const ZaloMessageEditor: React.FC<ZaloMessageEditorProps> = ({
         </div>
       </div>
 
-      {/* 2. Tag nhân sự phụ trách trong nhóm Zalo */}
+      {/* 2. Cấu hình Đính kèm Ảnh Chụp Màn Hình Lúc Đó (Zero-Impact Local Snapshot) */}
+      <div className="p-3.5 bg-slate-900/80 border border-slate-800 rounded-xl space-y-3">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-semibold text-slate-200 flex items-center gap-2">
+            <FontAwesomeIcon icon={faCamera} className="text-sky-400" />
+            <span>Đính kèm ảnh chụp màn hình lúc đó:</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-300">
+            <input
+              type="checkbox"
+              checked={zalo.attachScreenshot ?? true}
+              onChange={(e) => handleUpdateZalo({ attachScreenshot: e.target.checked })}
+              className="w-4 h-4 rounded text-sky-600 bg-slate-950 border-slate-700"
+            />
+            <span className={zalo.attachScreenshot ?? true ? 'text-emerald-400 font-bold' : 'text-slate-400'}>
+              {zalo.attachScreenshot ?? true ? 'BẬT chụp kèm ảnh' : 'TẮT chụp ảnh'}
+            </span>
+          </label>
+        </div>
+
+        {(zalo.attachScreenshot ?? true) && (
+          <div className="pt-2 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+            <button
+              type="button"
+              onClick={() => handleUpdateZalo({ screenshotMode: 'all' })}
+              className={`p-2.5 rounded-lg border text-left flex flex-col gap-1 transition ${
+                (zalo.screenshotMode || 'all') === 'all'
+                  ? 'bg-sky-500/20 text-white border-sky-500/50 shadow'
+                  : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:text-white'
+              }`}
+            >
+              <div className="font-bold flex items-center justify-between">
+                <span>📸 Toàn bộ lưới nhà thuốc (Tổng quan)</span>
+                {(zalo.screenshotMode || 'all') === 'all' && <FontAwesomeIcon icon={faCheck} className="text-sky-400" />}
+              </div>
+              <span className="text-[11px] opacity-80 font-normal">
+                Chụp toàn cảnh tất cả các quầy để thấy rõ quầy nào đông, quầy nào trống.
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleUpdateZalo({ screenshotMode: 'single' })}
+              className={`p-2.5 rounded-lg border text-left flex flex-col gap-1 transition ${
+                zalo.screenshotMode === 'single'
+                  ? 'bg-sky-500/20 text-white border-sky-500/50 shadow'
+                  : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:text-white'
+              }`}
+            >
+              <div className="font-bold flex items-center justify-between">
+                <span>🎯 Chỉ quầy gặp sự cố (Tập trung)</span>
+                {zalo.screenshotMode === 'single' && <FontAwesomeIcon icon={faCheck} className="text-sky-400" />}
+              </div>
+              <span className="text-[11px] opacity-80 font-normal">
+                Chụp cận cảnh nhà thuốc đang quá tải/chưa mở quầy để đối soát nhanh.
+              </span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* 3. Tag nhân sự phụ trách trong nhóm Zalo */}
       <div className="p-3.5 bg-slate-900/80 border border-slate-800 rounded-xl space-y-2.5">
         <div className="flex items-center justify-between">
           <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">

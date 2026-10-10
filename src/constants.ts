@@ -97,6 +97,8 @@ export const DEFAULT_SCENARIOS: AlertScenario[] = [
         { start: 0, len: 48, st: 'b' },        // In đậm
         { start: 0, len: 48, st: 'f_18' },     // Cỡ lớn
       ],
+      attachScreenshot: true,
+      screenshotMode: 'single',
     },
   },
   {
@@ -123,6 +125,8 @@ export const DEFAULT_SCENARIOS: AlertScenario[] = [
         { start: 0, len: 48, st: 'b' },
         { start: 0, len: 48, st: 'f_18' },
       ],
+      attachScreenshot: true,
+      screenshotMode: 'all',
     },
   },
   {

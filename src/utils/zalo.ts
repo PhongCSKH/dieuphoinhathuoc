@@ -69,11 +69,12 @@ export async function updateZaloConfig(config: Partial<ZaloAlertConfig>): Promis
   }
 }
 
-export async function triggerTestZalo(): Promise<{ success: boolean; message: string }> {
+export async function triggerTestZalo(imageBase64?: string): Promise<{ success: boolean; message: string }> {
   try {
     const res = await fetch(`${ZALO_BRIDGE_BASE}/api/test-alert`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageBase64 }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Gửi thất bại');
@@ -118,6 +119,7 @@ export async function dispatchZaloAlert(params: {
   mentions?: Array<{ pos: number; uid: string; len: number; name?: string }>;
   isResolved?: boolean;
   forceSend?: boolean;
+  imageBase64?: string;
 }): Promise<{ success: boolean; skipped?: boolean; reason?: string }> {
   try {
     const res = await fetch(`${ZALO_BRIDGE_BASE}/api/send-alert`, {

@@ -26,6 +26,7 @@ import {
 } from '../utils/zalo';
 import { compileZaloMessage } from '../utils/zaloTextCompiler';
 import { buildAllVariables } from '../utils/dispatchEngine';
+import { generateDispatchSnapshot } from '../utils/snapshotGenerator';
 
 interface ZaloSettingsTabProps {
   scenarios?: AlertScenario[];
@@ -148,6 +149,18 @@ export const ZaloSettingsTab: React.FC<ZaloSettingsTabProps> = ({ scenarios, pha
         testScenario.zalo.mentionMembers,
         testScenario.zalo.styles
       );
+
+      let imageBase64: string | undefined = undefined;
+      if (testScenario.zalo.attachScreenshot ?? true) {
+        const snap = await generateDispatchSnapshot({
+          pharmacies: pharmacies || [],
+          targetPharmacyId: primaryPh?.id,
+          mode: testScenario.zalo.screenshotMode || 'all',
+          alertTitle: '[THỬ NGHIỆM] Kiểm tra kết nối Zalo & Ảnh snapshot',
+        });
+        if (snap) imageBase64 = snap;
+      }
+
       const res = await dispatchZaloAlert({
         alertKey: `test-conn-${Date.now()}`,
         message: compiled.message,
@@ -155,18 +168,25 @@ export const ZaloSettingsTab: React.FC<ZaloSettingsTabProps> = ({ scenarios, pha
         urgency: testScenario.zalo.urgency,
         mentions: compiled.mentions,
         forceSend: true,
+        imageBase64,
       });
       setIsSendingTest(false);
       setTestResult({
         success: res.success,
         message: res.success
-          ? `Đã gửi tin thử nghiệm thành công theo Kịch bản: "${testScenario.name}"!`
+          ? `Đã gửi tin thử nghiệm kèm ảnh thành công: "${testScenario.name}"!`
           : (res.reason || 'Lỗi gửi tin qua Zalo Bridge'),
       });
       return;
     }
 
-    const res = await triggerTestZalo();
+    // Default test fallback: cũng đính kèm ảnh chụp màn hình thu nhỏ
+    const snap = await generateDispatchSnapshot({
+      pharmacies: pharmacies || [],
+      mode: 'all',
+      alertTitle: '[THỬ NGHIỆM] Kiểm tra kết nối Zalo & Ảnh snapshot',
+    });
+    const res = await triggerTestZalo(snap || undefined);
     setIsSendingTest(false);
     setTestResult(res);
   };

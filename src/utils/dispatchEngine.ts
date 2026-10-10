@@ -148,6 +148,8 @@ export function evaluateDispatchRules(
             styles: compiled.styles,
             mentions: compiled.mentions,
             cooldownMinutes: scNoCounter.zalo.cooldownMinutes,
+            attachScreenshot: scNoCounter.zalo.attachScreenshot,
+            screenshotMode: scNoCounter.zalo.screenshotMode,
           };
         }
 
@@ -202,6 +204,8 @@ export function evaluateDispatchRules(
           styles: compiled.styles,
           mentions: compiled.mentions,
           cooldownMinutes: scOverload.zalo.cooldownMinutes,
+          attachScreenshot: scOverload.zalo.attachScreenshot,
+          screenshotMode: scOverload.zalo.screenshotMode,
         };
       }
 
@@ -256,6 +260,8 @@ export function evaluateDispatchRules(
               styles: compiled.styles,
               mentions: compiled.mentions,
               cooldownMinutes: scReinforced.zalo.cooldownMinutes,
+              attachScreenshot: scReinforced.zalo.attachScreenshot,
+              screenshotMode: scReinforced.zalo.screenshotMode,
             };
           }
 
@@ -391,6 +397,8 @@ export function evaluateDispatchRules(
               styles: compiled.styles,
               mentions: compiled.mentions,
               cooldownMinutes: scLowTraffic.zalo.cooldownMinutes,
+              attachScreenshot: scLowTraffic.zalo.attachScreenshot,
+              screenshotMode: scLowTraffic.zalo.screenshotMode,
             };
           }
 
@@ -458,6 +466,8 @@ export function evaluateDispatchRules(
             styles: compiled.styles,
             mentions: compiled.mentions,
             cooldownMinutes: scImbalance.zalo.cooldownMinutes,
+            attachScreenshot: scImbalance.zalo.attachScreenshot,
+            screenshotMode: scImbalance.zalo.screenshotMode,
           };
         }
 
