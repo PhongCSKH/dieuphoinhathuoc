@@ -13,7 +13,7 @@ const BROWSER_EXECUTABLE = fs.existsSync(edgePath)
 let sharedBrowser = null;
 
 async function getBrowser() {
-  if (sharedBrowser && sharedBrowser.isConnected()) {
+  if (sharedBrowser && sharedBrowser.connected) {
     return sharedBrowser;
   }
   if (!BROWSER_EXECUTABLE) {
