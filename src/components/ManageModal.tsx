@@ -25,6 +25,7 @@ import { DEFAULT_PHARMACIES, SCALE_OPTIONS, DEFAULT_SCENARIOS } from '../constan
 import { ZaloSettingsTab } from './ZaloSettingsTab';
 import { ScenarioManagementTab } from './ScenarioManagementTab';
 import { fetchZaloContacts, dispatchZaloAlert } from '../utils/zalo';
+import { generateDispatchSnapshot } from '../utils/snapshotGenerator';
 import { ZaloContact } from '../types';
 
 interface ManageModalProps {
@@ -554,22 +555,45 @@ export const ManageModal: React.FC<ManageModalProps> = ({
                           <button
                             type="button"
                             onClick={async () => {
+                              showNotification(`Đang chụp ảnh & gửi thử vào ${item.name}...`);
+                              const nowTime = new Date().toLocaleTimeString('vi-VN');
+                              const title = `[KIỂM TRA KẾT NỐI - ${item.name}]`;
+                              const testMsg = `🔔 ${title}\n` +
+                                `• Xin Chào Các Bạn!\n` +
+                                `• Thời gian: ${nowTime}`;
+
+                              const styles = [
+                                { start: 0, len: title.length + 2, st: 'b' as const },
+                                { start: 0, len: title.length + 2, st: 'c_0068ff' as const },
+                                { start: 0, len: title.length + 2, st: 'f_18' as const },
+                              ];
+
+                              // Tự động tạo ảnh snapshot cận cảnh riêng của quầy này
+                              const snapshot = await generateDispatchSnapshot({
+                                pharmacies: list,
+                                targetPharmacyId: item.id,
+                                mode: 'single',
+                                alertTitle: `[KIỂM TRA KẾT NỐI] ${item.name}`,
+                              });
+
                               const res = await dispatchZaloAlert({
                                 alertKey: `test-pharmacy-${item.id}-${Date.now()}`,
-                                message: `🔔 [THỬ NGHIỆM KÊNH RIÊNG - ${item.name}]\n• Kiểm tra định tuyến tin nhắn thành công!\n• Thời gian: ${new Date().toLocaleTimeString('vi-VN')}`,
+                                message: testMsg,
+                                styles,
                                 urgency: 0,
                                 forceSend: true,
+                                imageBase64: snapshot || undefined,
                                 targetType: item.zaloTargetType || 'group',
                                 targetId: item.zaloTargetId,
                                 targetName: item.zaloTargetName,
                               });
                               if (res.success) {
-                                showNotification(`Đã gửi thử tin Zalo đến "${item.zaloTargetName || item.name}"!`);
+                                showNotification(`Đã gửi tin kiểm tra kết nối kèm ảnh đến "${item.zaloTargetName || item.name}"!`);
                               } else {
                                 showNotification(`Gửi thất bại: ${res.reason || 'Lỗi kết nối'}`);
                               }
                             }}
-                            className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded text-[11px] transition"
+                            className="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-lg text-[11px] shadow-sm transition"
                           >
                             Gửi thử
                           </button>
