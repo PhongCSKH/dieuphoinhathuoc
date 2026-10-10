@@ -346,7 +346,7 @@ export const App: React.FC = () => {
                   }
 
                   if (tagsToAppend.length > 0) {
-                    const suffixHeader = '\n\n👉 Kính chuyển: ';
+                    const suffixHeader = '\n\n';
                     const tagStrings = tagsToAppend.map((t) => t.tag).join(' ');
                     privateMsg = privateMsg + suffixHeader + tagStrings;
 

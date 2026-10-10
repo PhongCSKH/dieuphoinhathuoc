@@ -267,7 +267,7 @@ export function compileZaloMessage(
   if (text.includes('{tag_nhan_su}')) {
     text = text.replace('{tag_nhan_su}', mentionsText);
   } else if (mentionsText) {
-    text = text + `\n👉 Kính chuyển: ${mentionsText}`;
+    text = text + `\n\n${mentionsText}`;
   }
 
   // 3. Phân giải Inline Tags sang plainText và styles

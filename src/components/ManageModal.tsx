@@ -714,7 +714,7 @@ export const ManageModal: React.FC<ManageModalProps> = ({
                                   }
 
                                   if (tagsToAppend.length > 0) {
-                                    const suffixHeader = '\n\n👉 Kính chuyển: ';
+                                    const suffixHeader = '\n\n';
                                     const tagStrings = tagsToAppend.map((t) => t.tag).join(' ');
                                     testMsg = testMsg + suffixHeader + tagStrings;
 

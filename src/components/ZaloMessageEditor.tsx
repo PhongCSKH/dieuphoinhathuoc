@@ -211,7 +211,7 @@ export const ZaloMessageEditor: React.FC<ZaloMessageEditorProps> = ({
       if (text.includes('{tag_nhan_su}')) {
         text = text.replace('{tag_nhan_su}', mentionStr);
       } else {
-        text += `\n👉 Kính chuyển: ${mentionStr}`;
+        text += `\n\n${mentionStr}`;
       }
     }
 
