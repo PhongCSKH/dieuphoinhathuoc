@@ -279,6 +279,7 @@ export const App: React.FC = () => {
               mentions: alert.zaloPayload.mentions,
               forceSend: alert.type === 'reinforced' || alert.type === 'low_traffic',
               targetUrl: alert.zaloPayload.screenshotMode === 'single' && alertPharmacy?.url ? alertPharmacy.url : undefined,
+              targetZoom: alertPharmacy?.captureZoom || 0.85,
               imageBase64,
             });
 
@@ -305,6 +306,7 @@ export const App: React.FC = () => {
                 mentions: alert.zaloPayload.mentions,
                 forceSend: alert.type === 'reinforced' || alert.type === 'low_traffic',
                 targetUrl: targetPharmacy.url,
+                targetZoom: targetPharmacy.captureZoom || 0.85,
                 imageBase64: privateSnapshot,
                 targetType: targetPharmacy.zaloTargetType || 'group',
                 targetId: targetPharmacy.zaloTargetId,

@@ -12,6 +12,7 @@ export interface PharmacyScreen {
   zaloTargetType?: 'group' | 'user'; // Kênh Zalo riêng (Nhóm hoặc cá nhân)
   zaloTargetId?: string; // ID nhóm Zalo riêng (vd: ID nhóm NT4)
   zaloTargetName?: string; // Tên nhóm riêng hiển thị
+  captureZoom?: number; // Tỉ lệ thu nhỏ ảnh chụp QMS (vd: 0.85 = 85%, 0.80 = 80%)
 }
 
 export interface PharmacyStats {

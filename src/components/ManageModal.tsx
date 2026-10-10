@@ -547,63 +547,85 @@ export const ManageModal: React.FC<ManageModalProps> = ({
                         </select>
                       </div>
 
-                      {item.zaloTargetId ? (
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-emerald-400 font-mono">
-                            ● Sẽ gửi song song: Nhóm Chung + {item.zaloTargetName || item.zaloTargetId}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              showNotification(`Đang chụp ảnh & gửi thử vào ${item.name}...`);
-                              const nowTime = new Date().toLocaleTimeString('vi-VN');
-                              const title = `[KIỂM TRA KẾT NỐI - ${item.name}]`;
-                              const testMsg = `🔔 ${title}\n` +
-                                `• Xin Chào Các Bạn!\n` +
-                                `• Thời gian: ${nowTime}`;
-
-                              const styles = [
-                                { start: 0, len: title.length + 2, st: 'b' as const },
-                                { start: 0, len: title.length + 2, st: 'c_0068ff' as const },
-                                { start: 0, len: title.length + 2, st: 'f_18' as const },
-                              ];
-
-                              // Tự động tạo ảnh snapshot cận cảnh riêng của quầy này
-                              const snapshot = await generateDispatchSnapshot({
-                                pharmacies: list,
-                                targetPharmacyId: item.id,
-                                mode: 'single',
-                                alertTitle: `[KIỂM TRA KẾT NỐI] ${item.name}`,
-                              });
-
-                              const res = await dispatchZaloAlert({
-                                alertKey: `test-pharmacy-${item.id}-${Date.now()}`,
-                                message: testMsg,
-                                styles,
-                                urgency: 0,
-                                forceSend: true,
-                                targetUrl: item.url,
-                                imageBase64: snapshot || undefined,
-                                targetType: item.zaloTargetType || 'group',
-                                targetId: item.zaloTargetId,
-                                targetName: item.zaloTargetName,
-                              });
-                              if (res.success) {
-                                showNotification(`Đã gửi tin kiểm tra kèm ảnh thực tế đến "${item.zaloTargetName || item.name}"!`);
-                              } else {
-                                showNotification(`Gửi thất bại: ${res.reason || 'Lỗi kết nối'}`);
-                              }
-                            }}
-                            className="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-lg text-[11px] shadow-sm transition"
+                      <div className="flex flex-wrap items-center gap-3">
+                        <div className="flex items-center gap-1.5">
+                          <label className="text-[10px] text-slate-400 font-semibold whitespace-nowrap">
+                            Thu nhỏ ảnh chụp QMS:
+                          </label>
+                          <select
+                            value={item.captureZoom || 0.85}
+                            onChange={(e) =>
+                              handleUpdateItem(item.id, { captureZoom: parseFloat(e.target.value) })
+                            }
+                            className="bg-slate-950 border border-slate-700 text-sky-400 text-[11px] rounded px-2 py-0.5 outline-none font-mono"
                           >
-                            Gửi thử
-                          </button>
+                            <option value={1.0}>100% (Gốc)</option>
+                            <option value={0.90}>90% (Hơi thu nhỏ)</option>
+                            <option value={0.85}>85% (Chuẩn trọn vẹn)</option>
+                            <option value={0.80}>80% (Góc rộng)</option>
+                            <option value={0.75}>75% (Siêu rộng)</option>
+                          </select>
                         </div>
-                      ) : (
-                        <span className="text-[10px] text-slate-500 italic">
-                          💡 Chọn nhóm Zalo nếu bạn muốn gửi thêm thông báo riêng về cho nhân sự quầy này.
-                        </span>
-                      )}
+
+                        {item.zaloTargetId ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-emerald-400 font-mono">
+                              ● Sẽ gửi song song: Nhóm Chung + {item.zaloTargetName || item.zaloTargetId}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                showNotification(`Đang chụp ảnh & gửi thử vào ${item.name}...`);
+                                const nowTime = new Date().toLocaleTimeString('vi-VN');
+                                const title = `[KIỂM TRA KẾT NỐI - ${item.name}]`;
+                                const testMsg = `🔔 ${title}\n` +
+                                  `• Xin Chào Các Bạn!\n` +
+                                  `• Thời gian: ${nowTime}`;
+
+                                const styles = [
+                                  { start: 0, len: title.length + 2, st: 'b' as const },
+                                  { start: 0, len: title.length + 2, st: 'c_0068ff' as const },
+                                  { start: 0, len: title.length + 2, st: 'f_18' as const },
+                                ];
+
+                                // Tự động tạo ảnh snapshot cận cảnh riêng của quầy này
+                                const snapshot = await generateDispatchSnapshot({
+                                  pharmacies: list,
+                                  targetPharmacyId: item.id,
+                                  mode: 'single',
+                                  alertTitle: `[KIỂM TRA KẾT NỐI] ${item.name}`,
+                                });
+
+                                const res = await dispatchZaloAlert({
+                                  alertKey: `test-pharmacy-${item.id}-${Date.now()}`,
+                                  message: testMsg,
+                                  styles,
+                                  urgency: 0,
+                                  forceSend: true,
+                                  targetUrl: item.url,
+                                  targetZoom: item.captureZoom || 0.85,
+                                  imageBase64: snapshot || undefined,
+                                  targetType: item.zaloTargetType || 'group',
+                                  targetId: item.zaloTargetId,
+                                  targetName: item.zaloTargetName,
+                                });
+                                if (res.success) {
+                                  showNotification(`Đã gửi tin kiểm tra kèm ảnh thực tế đến "${item.zaloTargetName || item.name}"!`);
+                                } else {
+                                  showNotification(`Gửi thất bại: ${res.reason || 'Lỗi kết nối'}`);
+                                }
+                              }}
+                              className="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-lg text-[11px] shadow-sm transition"
+                            >
+                              Gửi thử
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-slate-500 italic">
+                            💡 Chọn nhóm Zalo nếu bạn muốn gửi thêm thông báo riêng về cho nhân sự quầy này.
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}

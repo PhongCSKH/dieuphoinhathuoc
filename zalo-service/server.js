@@ -406,7 +406,7 @@ app.get('/api/group-members', async (req, res) => {
 });
 
 // Helper to send message
-async function executeSendMessage(text, targetType, targetId, styles = [], urgency = 2, mentions = [], imageBase64 = null, targetUrl = null) {
+async function executeSendMessage(text, targetType, targetId, styles = [], urgency = 2, mentions = [], imageBase64 = null, targetUrl = null, targetZoom = 0.85) {
   if (!zaloApi) {
     throw new Error('Chưa đăng nhập Zalo');
   }
@@ -417,7 +417,7 @@ async function executeSendMessage(text, targetType, targetId, styles = [], urgen
   }
 
   const threadType = targetType === 'group' ? ThreadType.Group : ThreadType.User;
-  console.log(`[Zalo Service] Đang gửi tin đến: ${destinationId} (Loại: ${targetType}, Styles: ${styles?.length || 0}, Mentions: ${mentions?.length || 0}, Urgency: ${urgency}, HasImage: ${!!imageBase64}, TargetUrl: ${targetUrl || 'none'})...`);
+  console.log(`[Zalo Service] Đang gửi tin đến: ${destinationId} (Loại: ${targetType}, Styles: ${styles?.length || 0}, Mentions: ${mentions?.length || 0}, Urgency: ${urgency}, HasImage: ${!!imageBase64}, TargetUrl: ${targetUrl || 'none'}, Zoom: ${targetZoom})...`);
   
   const payload = {
     msg: text,
@@ -434,7 +434,7 @@ async function executeSendMessage(text, targetType, targetId, styles = [], urgen
   let attachmentPayload = null;
   if (targetUrl) {
     try {
-      const realScreenshotBuffer = await captureQmsTrueScreenshot(targetUrl);
+      const realScreenshotBuffer = await captureQmsTrueScreenshot(targetUrl, { zoom: targetZoom });
       if (realScreenshotBuffer) {
         attachmentPayload = {
           data: realScreenshotBuffer,
@@ -524,7 +524,7 @@ app.post('/api/send-alert', async (req, res) => {
     return res.status(401).json({ error: 'Chưa đăng nhập Zalo trên máy tính' });
   }
 
-  const { alertKey, message, styles = [], urgency = 2, mentions = [], isResolved = false, forceSend = false, imageBase64 = null, targetUrl = null, targetType: reqTargetType, targetId: reqTargetId, targetName: reqTargetName } = req.body;
+  const { alertKey, message, styles = [], urgency = 2, mentions = [], isResolved = false, forceSend = false, imageBase64 = null, targetUrl = null, targetZoom = 0.85, targetType: reqTargetType, targetId: reqTargetId, targetName: reqTargetName } = req.body;
   if (!message) {
     return res.status(400).json({ error: 'Thiếu nội dung tin nhắn cảnh báo' });
   }
@@ -553,7 +553,7 @@ app.post('/api/send-alert', async (req, res) => {
     const targetId = reqTargetId !== undefined ? reqTargetId : alertConfig.targetId;
     const destinationLabel = reqTargetName || (targetId ? `Nhóm/ID ${targetId}` : alertConfig.targetName || 'Zalo');
 
-    const result = await executeSendMessage(message, targetType, targetId, styles, urgency, mentions, imageBase64, targetUrl);
+    const result = await executeSendMessage(message, targetType, targetId, styles, urgency, mentions, imageBase64, targetUrl, targetZoom);
     
     // Update history
     if (alertKey) {

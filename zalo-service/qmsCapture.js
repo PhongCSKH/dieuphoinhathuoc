@@ -45,12 +45,16 @@ async function getBrowser() {
  * Đảm bảo 100% trung thực nguyên gốc LCD QMS
  *
  * @param {string} url Đường dẫn xem màn hình QMS (https://qms.tahospital.vn/view/...)
- * @returns {Promise<Buffer|null>} Buffer ảnh JPEG chất lượng cao (~80KB - 110KB)
+ * @param {Object} options Tùy chọn thu nhỏ / kích thước
+ * @param {number} options.zoom Tỉ lệ thu nhỏ (mặc định 0.85 = 85% để nhìn thoáng trọn vẹn toàn bộ lề và footer)
+ * @returns {Promise<Buffer|null>} Buffer ảnh JPEG chất lượng cao (~70KB - 95KB)
  */
-export async function captureQmsTrueScreenshot(url) {
+export async function captureQmsTrueScreenshot(url, options = {}) {
   if (!url || !url.startsWith('http')) {
     return null;
   }
+
+  const zoomLevel = typeof options.zoom === 'number' && options.zoom > 0 ? options.zoom : 0.85;
 
   let page = null;
   try {
@@ -60,12 +64,19 @@ export async function captureQmsTrueScreenshot(url) {
     // Chuẩn tỉ lệ màn hình LCD TV 16:9 (1280x720)
     await page.setViewport({ width: 1280, height: 720 });
 
-    console.log(`[QMS Snapshot] Đang chụp màn hình thực tế: ${url}...`);
+    console.log(`[QMS Snapshot] Đang chụp màn hình thực tế: ${url} (Tỉ lệ thu nhỏ: ${Math.round(zoomLevel * 100)}%)...`);
 
     // Điều hướng đến URL màn hình QMS, đợi mạng ổn định
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 15000 });
 
-    // Đợi 1 giây để hiệu ứng render dữ liệu bảng hàng chờ hoàn tất
+    // Thu nhỏ tỷ lệ hiển thị trang nếu zoomLevel khác 1 (giúp khung hình nhìn trọn vẹn từ Logo đến Footer cam)
+    if (zoomLevel !== 1) {
+      await page.evaluate((z) => {
+        document.body.style.zoom = String(z);
+      }, zoomLevel);
+    }
+
+    // Đợi 1 giây để render ổn định dữ liệu bảng hàng chờ
     await new Promise((r) => setTimeout(r, 1000));
 
     // Chụp lại toàn bộ khung nhìn LCD thực tế dạng JPEG 75%
