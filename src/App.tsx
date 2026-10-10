@@ -270,6 +270,7 @@ export const App: React.FC = () => {
             }
 
             // 1. Luôn luôn gửi vào Nhóm Chung điều phối (Kênh tổng)
+            const alertPharmacy = alert.pharmacyId ? updatedList.find((p) => p.id === alert.pharmacyId) : undefined;
             dispatchZaloAlert({
               alertKey: alert.id,
               message: alert.zaloPayload.message,
@@ -277,11 +278,12 @@ export const App: React.FC = () => {
               urgency: alert.zaloPayload.urgency,
               mentions: alert.zaloPayload.mentions,
               forceSend: alert.type === 'reinforced' || alert.type === 'low_traffic',
+              targetUrl: alert.zaloPayload.screenshotMode === 'single' && alertPharmacy?.url ? alertPharmacy.url : undefined,
               imageBase64,
             });
 
             // 2. Gửi KÉP vào Nhóm Riêng của quầy (nếu quầy này có cài đặt nhóm Zalo riêng)
-            const targetPharmacy = alert.pharmacyId ? updatedList.find((p) => p.id === alert.pharmacyId) : undefined;
+            const targetPharmacy = alertPharmacy;
             if (targetPharmacy && targetPharmacy.zaloTargetId) {
               // Đối với nhóm riêng, tạo snapshot tập trung cận cảnh quầy đó nếu có ảnh
               let privateSnapshot: string | undefined = imageBase64;
@@ -302,6 +304,7 @@ export const App: React.FC = () => {
                 urgency: alert.zaloPayload.urgency,
                 mentions: alert.zaloPayload.mentions,
                 forceSend: alert.type === 'reinforced' || alert.type === 'low_traffic',
+                targetUrl: targetPharmacy.url,
                 imageBase64: privateSnapshot,
                 targetType: targetPharmacy.zaloTargetType || 'group',
                 targetId: targetPharmacy.zaloTargetId,

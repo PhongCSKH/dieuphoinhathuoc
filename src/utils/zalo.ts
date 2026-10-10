@@ -120,6 +120,7 @@ export async function dispatchZaloAlert(params: {
   isResolved?: boolean;
   forceSend?: boolean;
   imageBase64?: string;
+  targetUrl?: string;
   targetType?: 'group' | 'user';
   targetId?: string;
   targetName?: string;

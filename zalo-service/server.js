@@ -5,6 +5,7 @@ import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
 import { Zalo, ThreadType } from 'zca-js';
+import { captureQmsTrueScreenshot } from './qmsCapture.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -405,7 +406,7 @@ app.get('/api/group-members', async (req, res) => {
 });
 
 // Helper to send message
-async function executeSendMessage(text, targetType, targetId, styles = [], urgency = 2, mentions = [], imageBase64 = null) {
+async function executeSendMessage(text, targetType, targetId, styles = [], urgency = 2, mentions = [], imageBase64 = null, targetUrl = null) {
   if (!zaloApi) {
     throw new Error('Chưa đăng nhập Zalo');
   }
@@ -416,7 +417,7 @@ async function executeSendMessage(text, targetType, targetId, styles = [], urgen
   }
 
   const threadType = targetType === 'group' ? ThreadType.Group : ThreadType.User;
-  console.log(`[Zalo Service] Đang gửi tin đến: ${destinationId} (Loại: ${targetType}, Styles: ${styles?.length || 0}, Mentions: ${mentions?.length || 0}, Urgency: ${urgency}, HasImage: ${!!imageBase64})...`);
+  console.log(`[Zalo Service] Đang gửi tin đến: ${destinationId} (Loại: ${targetType}, Styles: ${styles?.length || 0}, Mentions: ${mentions?.length || 0}, Urgency: ${urgency}, HasImage: ${!!imageBase64}, TargetUrl: ${targetUrl || 'none'})...`);
   
   const payload = {
     msg: text,
@@ -429,9 +430,31 @@ async function executeSendMessage(text, targetType, targetId, styles = [], urgen
     payload.mentions = mentions;
   }
 
-  // Xử lý đính kèm ảnh nếu có (Base64 JPEG/PNG)
+  // Ưu tiên 1: Chụp ảnh màn hình thực tế (True Screenshot) từ targetUrl của nhà thuốc nếu được cung cấp
   let attachmentPayload = null;
-  if (imageBase64) {
+  if (targetUrl) {
+    try {
+      const realScreenshotBuffer = await captureQmsTrueScreenshot(targetUrl);
+      if (realScreenshotBuffer) {
+        attachmentPayload = {
+          data: realScreenshotBuffer,
+          filename: `qms_real_${Date.now()}.jpg`,
+          metadata: {
+            totalSize: realScreenshotBuffer.length,
+            width: 1280,
+            height: 720,
+          },
+        };
+        payload.attachments = [attachmentPayload];
+        console.log(`[Zalo Service] Đã đính kèm ảnh chụp màn hình QMS thực tế 100% (${Math.round(realScreenshotBuffer.length / 1024)} KB)`);
+      }
+    } catch (realErr) {
+      console.warn('[Zalo Service] Không thể chụp ảnh thực tế QMS, sẽ chuyển sang ảnh dự phòng:', realErr.message);
+    }
+  }
+
+  // Ưu tiên 2: Xử lý đính kèm ảnh nếu có (Base64) khi không có targetUrl hoặc chụp ngầm thất bại
+  if (!attachmentPayload && imageBase64) {
     try {
       const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
       const buffer = Buffer.from(cleanBase64, 'base64');
@@ -501,7 +524,7 @@ app.post('/api/send-alert', async (req, res) => {
     return res.status(401).json({ error: 'Chưa đăng nhập Zalo trên máy tính' });
   }
 
-  const { alertKey, message, styles = [], urgency = 2, mentions = [], isResolved = false, forceSend = false, imageBase64 = null, targetType: reqTargetType, targetId: reqTargetId, targetName: reqTargetName } = req.body;
+  const { alertKey, message, styles = [], urgency = 2, mentions = [], isResolved = false, forceSend = false, imageBase64 = null, targetUrl = null, targetType: reqTargetType, targetId: reqTargetId, targetName: reqTargetName } = req.body;
   if (!message) {
     return res.status(400).json({ error: 'Thiếu nội dung tin nhắn cảnh báo' });
   }
@@ -530,7 +553,7 @@ app.post('/api/send-alert', async (req, res) => {
     const targetId = reqTargetId !== undefined ? reqTargetId : alertConfig.targetId;
     const destinationLabel = reqTargetName || (targetId ? `Nhóm/ID ${targetId}` : alertConfig.targetName || 'Zalo');
 
-    const result = await executeSendMessage(message, targetType, targetId, styles, urgency, mentions, imageBase64);
+    const result = await executeSendMessage(message, targetType, targetId, styles, urgency, mentions, imageBase64, targetUrl);
     
     // Update history
     if (alertKey) {

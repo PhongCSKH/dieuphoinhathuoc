@@ -582,13 +582,14 @@ export const ManageModal: React.FC<ManageModalProps> = ({
                                 styles,
                                 urgency: 0,
                                 forceSend: true,
+                                targetUrl: item.url,
                                 imageBase64: snapshot || undefined,
                                 targetType: item.zaloTargetType || 'group',
                                 targetId: item.zaloTargetId,
                                 targetName: item.zaloTargetName,
                               });
                               if (res.success) {
-                                showNotification(`Đã gửi tin kiểm tra kết nối kèm ảnh đến "${item.zaloTargetName || item.name}"!`);
+                                showNotification(`Đã gửi tin kiểm tra kèm ảnh thực tế đến "${item.zaloTargetName || item.name}"!`);
                               } else {
                                 showNotification(`Gửi thất bại: ${res.reason || 'Lỗi kết nối'}`);
                               }
