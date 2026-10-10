@@ -298,25 +298,44 @@ export const App: React.FC = () => {
                 if (singleSnap) privateSnapshot = singleSnap;
               }
 
-              // Xử lý @All cho nhóm riêng nếu quầy có bật mentionAll
+              // Xử lý @All và @Đích danh người được chọn cho nhóm riêng
               let privateMsg = alert.zaloPayload.message;
               let privateStyles = alert.zaloPayload.styles ? [...alert.zaloPayload.styles] : [];
               let privateMentions = alert.zaloPayload.mentions ? [...alert.zaloPayload.mentions] : [];
 
-              if (targetPharmacy.mentionAll && targetPharmacy.zaloTargetType === 'group') {
-                const mentionPrefix = '@All ';
-                privateMsg = mentionPrefix + privateMsg;
-                // Dịch chuyển các styles theo độ dài tiền tố
-                privateStyles = privateStyles.map((s) => ({ ...s, start: s.start + mentionPrefix.length }));
-                // Dịch chuyển các mentions hiện có
-                privateMentions = privateMentions.map((m) => ({ ...m, pos: m.pos + mentionPrefix.length }));
-                // Thêm mention @All ở đầu tin nhắn
-                privateMentions.unshift({
-                  pos: 0,
-                  uid: '-1',
-                  len: '@All'.length,
-                  name: 'All',
-                });
+              let privatePrefix = '';
+              const newPrivateMentions: Array<{ pos: number; uid: string; len: number; name?: string }> = [];
+
+              if (targetPharmacy.zaloTargetType === 'group') {
+                if (targetPharmacy.mentionAll) {
+                  const allTag = '@All ';
+                  newPrivateMentions.push({
+                    pos: privatePrefix.length,
+                    uid: '-1',
+                    len: '@All'.length,
+                    name: 'All',
+                  });
+                  privatePrefix += allTag;
+                }
+                if (Array.isArray(targetPharmacy.mentionMembers) && targetPharmacy.mentionMembers.length > 0) {
+                  targetPharmacy.mentionMembers.forEach((m) => {
+                    const tag = `@${m.name} `;
+                    newPrivateMentions.push({
+                      pos: privatePrefix.length,
+                      uid: m.uid,
+                      len: `@${m.name}`.length,
+                      name: m.name,
+                    });
+                    privatePrefix += tag;
+                  });
+                }
+              }
+
+              if (privatePrefix) {
+                privateMsg = privatePrefix + privateMsg;
+                privateStyles = privateStyles.map((s) => ({ ...s, start: s.start + privatePrefix.length }));
+                privateMentions = privateMentions.map((m) => ({ ...m, pos: m.pos + privatePrefix.length }));
+                privateMentions = [...newPrivateMentions, ...privateMentions];
               }
 
               dispatchZaloAlert({

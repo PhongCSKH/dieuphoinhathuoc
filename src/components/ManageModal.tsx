@@ -20,12 +20,13 @@ import {
   faSliders,
   faFloppyDisk,
   faAt,
+  faUserGroup,
 } from '@fortawesome/free-solid-svg-icons';
-import { PharmacyScreen, DispatchRules, LayoutMode, AlertScenario } from '../types';
+import { PharmacyScreen, DispatchRules, LayoutMode, AlertScenario, ZaloGroupMember } from '../types';
 import { DEFAULT_PHARMACIES, SCALE_OPTIONS, DEFAULT_SCENARIOS } from '../constants';
 import { ZaloSettingsTab } from './ZaloSettingsTab';
 import { ScenarioManagementTab } from './ScenarioManagementTab';
-import { fetchZaloContacts, dispatchZaloAlert } from '../utils/zalo';
+import { fetchZaloContacts, dispatchZaloAlert, fetchGroupMembers } from '../utils/zalo';
 import { generateDispatchSnapshot } from '../utils/snapshotGenerator';
 import { ZaloContact } from '../types';
 
@@ -64,6 +65,8 @@ export const ManageModal: React.FC<ManageModalProps> = ({
   });
   const [notification, setNotification] = useState<string | null>(null);
   const [zaloContacts, setZaloContacts] = useState<{ self: ZaloContact; groups: ZaloContact[]; friends: ZaloContact[] } | null>(null);
+  const [groupMembersMap, setGroupMembersMap] = useState<Record<string, ZaloGroupMember[]>>({});
+  const [activePickerPhId, setActivePickerPhId] = useState<string | null>(null);
   const wasOpenRef = React.useRef(false);
 
   // Load danh bạ Zalo khi mở modal
@@ -74,6 +77,16 @@ export const ManageModal: React.FC<ManageModalProps> = ({
       });
     }
   }, [isOpen]);
+
+  const loadMembersForGroup = async (groupId: string) => {
+    if (!groupId || groupMembersMap[groupId]) return;
+    try {
+      const mems = await fetchGroupMembers(groupId);
+      if (Array.isArray(mems)) {
+        setGroupMembersMap((prev) => ({ ...prev, [groupId]: mems }));
+      }
+    } catch {}
+  };
 
   // Chỉ sync state khi modal vừa chuyển từ ĐÓNG sang MỞ (tránh bị telemetry ghi đè trong lúc đang sửa)
   useEffect(() => {
@@ -573,20 +586,96 @@ export const ManageModal: React.FC<ManageModalProps> = ({
 
                         {item.zaloTargetId ? (
                           <div className="flex flex-wrap items-center gap-3">
-                            {/* Tùy chọn @All cho nhóm riêng */}
+                            {/* Tùy chọn @All & Chọn đích danh cho nhóm riêng */}
                             {item.zaloTargetType === 'group' && (
-                              <label className="flex items-center gap-1.5 cursor-pointer bg-slate-950 px-2 py-1 rounded border border-slate-800 hover:border-slate-700 select-none">
-                                <input
-                                  type="checkbox"
-                                  checked={!!item.mentionAll}
-                                  onChange={(e) => handleUpdateItem(item.id, { mentionAll: e.target.checked })}
-                                  className="w-3.5 h-3.5 rounded text-sky-500 focus:ring-0 bg-slate-900 border-slate-700"
-                                />
-                                <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1">
-                                  <FontAwesomeIcon icon={faAt} className="text-[10px]" />
-                                  @All (Cả nhóm)
-                                </span>
-                              </label>
+                              <div className="flex items-center gap-2">
+                                <label className="flex items-center gap-1.5 cursor-pointer bg-slate-950 px-2 py-1 rounded border border-slate-800 hover:border-slate-700 select-none">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!item.mentionAll}
+                                    onChange={(e) => handleUpdateItem(item.id, { mentionAll: e.target.checked })}
+                                    className="w-3.5 h-3.5 rounded text-sky-500 focus:ring-0 bg-slate-900 border-slate-700"
+                                  />
+                                  <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1">
+                                    <FontAwesomeIcon icon={faAt} className="text-[10px]" />
+                                    @All (Cả nhóm)
+                                  </span>
+                                </label>
+
+                                {/* Nút & Dropdown chọn đích danh người trong nhóm */}
+                                <div className="relative">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (activePickerPhId === item.id) {
+                                        setActivePickerPhId(null);
+                                      } else {
+                                        setActivePickerPhId(item.id);
+                                        loadMembersForGroup(item.zaloTargetId || '');
+                                      }
+                                    }}
+                                    className={`px-2 py-1 rounded border text-[11px] font-semibold flex items-center gap-1 transition ${
+                                      (item.mentionMembers && item.mentionMembers.length > 0)
+                                        ? 'bg-sky-500/20 border-sky-500/40 text-sky-300'
+                                        : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                                    }`}
+                                  >
+                                    <FontAwesomeIcon icon={faUserGroup} className="text-[10px]" />
+                                    <span>
+                                      {item.mentionMembers && item.mentionMembers.length > 0
+                                        ? `@ ${item.mentionMembers.length} người`
+                                        : '+ @ Đích danh'}
+                                    </span>
+                                  </button>
+
+                                  {activePickerPhId === item.id && (
+                                    <div className="absolute z-30 left-0 top-8 w-64 max-h-56 overflow-y-auto bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-2 space-y-1">
+                                      <div className="text-[10px] font-bold text-slate-400 px-2 py-1 border-b border-slate-800 flex items-center justify-between">
+                                        <span>CHỌN THÀNH VIÊN ĐỂ @:</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => setActivePickerPhId(null)}
+                                          className="text-slate-400 hover:text-white"
+                                        >
+                                          ✕
+                                        </button>
+                                      </div>
+                                      {(!groupMembersMap[item.zaloTargetId] || groupMembersMap[item.zaloTargetId].length === 0) ? (
+                                        <div className="p-3 text-center text-xs text-slate-400">
+                                          Đang tải hoặc chưa có thành viên...
+                                        </div>
+                                      ) : (
+                                        groupMembersMap[item.zaloTargetId].map((mem) => {
+                                          const selectedList = item.mentionMembers || [];
+                                          const isChecked = selectedList.some((m) => m.uid === mem.uid);
+                                          return (
+                                            <button
+                                              key={mem.uid}
+                                              type="button"
+                                              onClick={() => {
+                                                const currentMems = item.mentionMembers || [];
+                                                const exists = currentMems.some((m) => m.uid === mem.uid);
+                                                const updatedMems = exists
+                                                  ? currentMems.filter((m) => m.uid !== mem.uid)
+                                                  : [...currentMems, { uid: mem.uid, name: mem.name }];
+                                                handleUpdateItem(item.id, { mentionMembers: updatedMems });
+                                              }}
+                                              className={`w-full flex items-center justify-between p-1.5 rounded-lg text-left text-xs transition ${
+                                                isChecked
+                                                  ? 'bg-sky-500/20 text-sky-200'
+                                                  : 'text-slate-300 hover:bg-slate-800'
+                                              }`}
+                                            >
+                                              <span className="truncate">{mem.name}</span>
+                                              {isChecked && <FontAwesomeIcon icon={faCheck} className="text-sky-400 text-xs" />}
+                                            </button>
+                                          );
+                                        })
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
                             )}
 
                             <span className="text-[11px] text-emerald-400 font-mono">
@@ -600,7 +689,6 @@ export const ManageModal: React.FC<ManageModalProps> = ({
                                 const nowTime = new Date().toLocaleTimeString('vi-VN');
                                 const title = `[KIỂM TRA KẾT NỐI - ${item.name}]`;
                                 
-                                // Nếu có bật @All cho nhóm riêng thì thêm @All vào đầu nội dung
                                 let testMsg = `🔔 ${title}\n` +
                                   `• Xin Chào Các Bạn!\n` +
                                   `• Thời gian: ${nowTime}`;
@@ -612,17 +700,37 @@ export const ManageModal: React.FC<ManageModalProps> = ({
                                 ];
 
                                 let mentions: Array<{ pos: number; uid: string; len: number; name?: string }> = [];
-                                if (item.mentionAll && item.zaloTargetType === 'group') {
-                                  const mentionPrefix = '@All ';
+                                
+                                // Xử lý @All và @Đích danh người được chọn
+                                let mentionPrefix = '';
+                                if (item.zaloTargetType === 'group') {
+                                  if (item.mentionAll) {
+                                    const allTag = '@All ';
+                                    mentions.push({
+                                      pos: mentionPrefix.length,
+                                      uid: '-1',
+                                      len: '@All'.length,
+                                      name: 'All',
+                                    });
+                                    mentionPrefix += allTag;
+                                  }
+                                  if (Array.isArray(item.mentionMembers) && item.mentionMembers.length > 0) {
+                                    item.mentionMembers.forEach((m) => {
+                                      const tag = `@${m.name} `;
+                                      mentions.push({
+                                        pos: mentionPrefix.length,
+                                        uid: m.uid,
+                                        len: `@${m.name}`.length,
+                                        name: m.name,
+                                      });
+                                      mentionPrefix += tag;
+                                    });
+                                  }
+                                }
+
+                                if (mentionPrefix) {
                                   testMsg = mentionPrefix + testMsg;
-                                  // Dịch chuyển styles theo độ dài prefix
                                   styles.forEach((s) => s.start += mentionPrefix.length);
-                                  mentions.push({
-                                    pos: 0,
-                                    uid: '-1',
-                                    len: '@All'.length,
-                                    name: 'All',
-                                  });
                                 }
 
                                 const snapshot = await generateDispatchSnapshot({
