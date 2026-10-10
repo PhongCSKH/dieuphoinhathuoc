@@ -430,33 +430,63 @@ async function executeSendMessage(text, targetType, targetId, styles = [], urgen
   }
 
   // Xử lý đính kèm ảnh nếu có (Base64 JPEG/PNG)
+  let attachmentPayload = null;
   if (imageBase64) {
     try {
       const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
       const buffer = Buffer.from(cleanBase64, 'base64');
       const filename = `snapshot_${Date.now()}.jpg`;
 
-      // zca-js Attachment format
-      payload.attachments = [
-        {
-          data: buffer,
-          filename: filename,
-          metadata: {
-            totalSize: buffer.length,
-          },
+      attachmentPayload = {
+        data: buffer,
+        filename: filename,
+        metadata: {
+          totalSize: buffer.length,
+          width: 800,
+          height: 600,
         },
-      ];
-      console.log(`[Zalo Service] Đã đính kèm ảnh chụp màn hình (${Math.round(buffer.length / 1024)} KB)`);
+      };
+      payload.attachments = [attachmentPayload];
+      console.log(`[Zalo Service] Đã nạp ảnh chụp snapshot (${Math.round(buffer.length / 1024)} KB)`);
     } catch (imgErr) {
-      console.error('[Zalo Service] Lỗi xử lý đính kèm ảnh:', imgErr.message);
+      console.error('[Zalo Service] Lỗi xử lý ảnh Base64:', imgErr.message);
     }
   }
 
-  const result = await zaloApi.sendMessage(
-    payload,
-    destinationId,
-    threadType
-  );
+  // 1. Thử gửi tin nhắn (kèm ảnh qua payload.attachments)
+  let result = null;
+  try {
+    result = await zaloApi.sendMessage(
+      payload,
+      destinationId,
+      threadType
+    );
+  } catch (sendErr) {
+    console.error('[Zalo Service] Lỗi gửi payload chính:', sendErr.message);
+    throw sendErr;
+  }
+
+  // 2. Kiểm tra nếu có đính kèm ảnh nhưng Zalo không trả về kết quả upload hoặc chỉ gửi tin chữ
+  // Đảm bảo gửi bổ sung ảnh trực tiếp nếu attachment bị bỏ sót
+  const hasAttachmentSuccess = Array.isArray(result?.attachment) && result.attachment.length > 0;
+  if (attachmentPayload && !hasAttachmentSuccess) {
+    console.warn('[Zalo Service] Cảnh báo: Ảnh chưa được gửi trong đợt đầu, đang gửi bổ sung riêng ảnh snapshot...');
+    try {
+      const photoResult = await zaloApi.sendMessage(
+        {
+          msg: '📸 [Ảnh snapshot cận cảnh]',
+          attachments: [attachmentPayload],
+        },
+        destinationId,
+        threadType
+      );
+      if (!result) result = {};
+      result.extraPhoto = photoResult;
+      console.log('[Zalo Service] Đã gửi bổ sung ảnh snapshot thành công!');
+    } catch (photoErr) {
+      console.error('[Zalo Service] Không thể gửi bổ sung ảnh:', photoErr.message);
+    }
+  }
 
   return result;
 }
