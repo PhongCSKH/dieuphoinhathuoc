@@ -13,6 +13,8 @@ export interface PharmacyScreen {
   zaloTargetId?: string; // ID nhóm Zalo riêng (vd: ID nhóm NT4)
   zaloTargetName?: string; // Tên nhóm riêng hiển thị
   captureZoom?: number; // Tỉ lệ thu nhỏ ảnh chụp QMS (vd: 0.85 = 85%, 0.80 = 80%)
+  mentionAll?: boolean; // Tự động @All (Toàn bộ thành viên nhóm riêng) khi có cảnh báo
+  mentionMembers?: Array<{ uid: string; name: string }>; // Danh sách nhân sự @ đích danh trong nhóm riêng
 }
 
 export interface PharmacyStats {

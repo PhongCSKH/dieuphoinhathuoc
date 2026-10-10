@@ -476,40 +476,62 @@ async function executeSendMessage(text, targetType, targetId, styles = [], urgen
     }
   }
 
-  // 1. Thử gửi tin nhắn (kèm ảnh qua payload.attachments)
-  let result = null;
-  try {
-    result = await zaloApi.sendMessage(
-      payload,
-      destinationId,
-      threadType
-    );
-  } catch (sendErr) {
-    console.error('[Zalo Service] Lỗi gửi payload chính:', sendErr.message);
-    throw sendErr;
-  }
-
-  // 2. Kiểm tra nếu có đính kèm ảnh nhưng Zalo không trả về kết quả upload hoặc chỉ gửi tin chữ
-  // Đảm bảo gửi bổ sung ảnh trực tiếp nếu attachment bị bỏ sót
-  const hasAttachmentSuccess = Array.isArray(result?.attachment) && result.attachment.length > 0;
-  if (attachmentPayload && !hasAttachmentSuccess) {
-    console.warn('[Zalo Service] Cảnh báo: Ảnh chưa được gửi trong đợt đầu, đang gửi bổ sung riêng ảnh snapshot...');
+  // NẾU CÓ ĐÍNH KÈM ẢNH:
+  // Tách thành 2 tin nhắn gửi liên tiếp:
+  // Tin 1: Gửi bức ảnh LCD thực tế (Zalo render ảnh to, sắc nét, trọn vẹn)
+  // Tin 2: Gửi tin nhắn chữ với 100% Styles (In đậm, đổi màu đỏ/xanh, cỡ chữ) và @Mentions (@All hoặc đích danh)
+  if (attachmentPayload) {
     try {
+      // 1. Gửi ảnh trước
+      console.log(`[Zalo Service] [1/2] Đang gửi ảnh thực tế...`);
       const photoResult = await zaloApi.sendMessage(
         {
-          msg: '📸 [Ảnh snapshot cận cảnh]',
+          msg: '',
           attachments: [attachmentPayload],
         },
         destinationId,
         threadType
       );
-      if (!result) result = {};
-      result.extraPhoto = photoResult;
-      console.log('[Zalo Service] Đã gửi bổ sung ảnh snapshot thành công!');
-    } catch (photoErr) {
-      console.error('[Zalo Service] Không thể gửi bổ sung ảnh:', photoErr.message);
+
+      // Đợi 250ms để Zalo phân phối ảnh trước
+      await new Promise((r) => setTimeout(r, 250));
+
+      // 2. Gửi tin nhắn chữ với đầy đủ Styles và Mentions
+      console.log(`[Zalo Service] [2/2] Đang gửi tin nhắn cảnh báo có định dạng Styles/Mentions...`);
+      const textPayload = {
+        msg: text,
+        urgency,
+      };
+      if (Array.isArray(styles) && styles.length > 0) {
+        textPayload.styles = styles;
+      }
+      if (Array.isArray(mentions) && mentions.length > 0) {
+        textPayload.mentions = mentions;
+      }
+
+      const textResult = await zaloApi.sendMessage(
+        textPayload,
+        destinationId,
+        threadType
+      );
+
+      return {
+        photoResult,
+        textResult,
+        delivered: true,
+      };
+    } catch (splitErr) {
+      console.error('[Zalo Service] Lỗi gửi luồng tách ảnh + chữ:', splitErr.message);
+      throw splitErr;
     }
   }
+
+  // NẾU KHÔNG CÓ ẢNH: Gửi tin nhắn văn bản thông thường
+  const result = await zaloApi.sendMessage(
+    payload,
+    destinationId,
+    threadType
+  );
 
   return result;
 }

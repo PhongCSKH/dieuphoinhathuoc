@@ -19,6 +19,7 @@ import {
   faComments,
   faSliders,
   faFloppyDisk,
+  faAt,
 } from '@fortawesome/free-solid-svg-icons';
 import { PharmacyScreen, DispatchRules, LayoutMode, AlertScenario } from '../types';
 import { DEFAULT_PHARMACIES, SCALE_OPTIONS, DEFAULT_SCENARIOS } from '../constants';
@@ -547,7 +548,7 @@ export const ManageModal: React.FC<ManageModalProps> = ({
                         </select>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-slate-800/60">
                         <div className="flex items-center gap-1.5">
                           <label className="text-[10px] text-slate-400 font-semibold whitespace-nowrap">
                             Thu nhỏ ảnh chụp QMS:
@@ -568,27 +569,59 @@ export const ManageModal: React.FC<ManageModalProps> = ({
                         </div>
 
                         {item.zaloTargetId ? (
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-3">
+                            {/* Tùy chọn @All cho nhóm riêng */}
+                            {item.zaloTargetType === 'group' && (
+                              <label className="flex items-center gap-1.5 cursor-pointer bg-slate-950 px-2 py-1 rounded border border-slate-800 hover:border-slate-700 select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={!!item.mentionAll}
+                                  onChange={(e) => handleUpdateItem(item.id, { mentionAll: e.target.checked })}
+                                  className="w-3.5 h-3.5 rounded text-sky-500 focus:ring-0 bg-slate-900 border-slate-700"
+                                />
+                                <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1">
+                                  <FontAwesomeIcon icon={faAt} className="text-[10px]" />
+                                  @All (Cả nhóm)
+                                </span>
+                              </label>
+                            )}
+
                             <span className="text-[11px] text-emerald-400 font-mono">
-                              ● Sẽ gửi song song: Nhóm Chung + {item.zaloTargetName || item.zaloTargetId}
+                              ● Gửi song song: Nhóm Chung + {item.zaloTargetName || item.zaloTargetId}
                             </span>
+
                             <button
                               type="button"
                               onClick={async () => {
                                 showNotification(`Đang chụp ảnh & gửi thử vào ${item.name}...`);
                                 const nowTime = new Date().toLocaleTimeString('vi-VN');
                                 const title = `[KIỂM TRA KẾT NỐI - ${item.name}]`;
-                                const testMsg = `🔔 ${title}\n` +
+                                
+                                // Nếu có bật @All cho nhóm riêng thì thêm @All vào đầu nội dung
+                                let testMsg = `🔔 ${title}\n` +
                                   `• Xin Chào Các Bạn!\n` +
                                   `• Thời gian: ${nowTime}`;
-
+                                
                                 const styles = [
-                                  { start: 0, len: title.length + 2, st: 'b' as const },
-                                  { start: 0, len: title.length + 2, st: 'c_0068ff' as const },
-                                  { start: 0, len: title.length + 2, st: 'f_18' as const },
+                                  { start: 2, len: title.length, st: 'b' as const },
+                                  { start: 2, len: title.length, st: 'c_0068ff' as const },
+                                  { start: 2, len: title.length, st: 'f_18' as const },
                                 ];
 
-                                // Tự động tạo ảnh snapshot cận cảnh riêng của quầy này
+                                let mentions: Array<{ pos: number; uid: string; len: number; name?: string }> = [];
+                                if (item.mentionAll && item.zaloTargetType === 'group') {
+                                  const mentionPrefix = '@All ';
+                                  testMsg = mentionPrefix + testMsg;
+                                  // Dịch chuyển styles theo độ dài prefix
+                                  styles.forEach((s) => s.start += mentionPrefix.length);
+                                  mentions.push({
+                                    pos: 0,
+                                    uid: '-1',
+                                    len: '@All'.length,
+                                    name: 'All',
+                                  });
+                                }
+
                                 const snapshot = await generateDispatchSnapshot({
                                   pharmacies: list,
                                   targetPharmacyId: item.id,
@@ -601,6 +634,7 @@ export const ManageModal: React.FC<ManageModalProps> = ({
                                   message: testMsg,
                                   styles,
                                   urgency: 0,
+                                  mentions,
                                   forceSend: true,
                                   targetUrl: item.url,
                                   targetZoom: item.captureZoom || 0.85,

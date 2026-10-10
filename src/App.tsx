@@ -298,12 +298,33 @@ export const App: React.FC = () => {
                 if (singleSnap) privateSnapshot = singleSnap;
               }
 
+              // Xử lý @All cho nhóm riêng nếu quầy có bật mentionAll
+              let privateMsg = alert.zaloPayload.message;
+              let privateStyles = alert.zaloPayload.styles ? [...alert.zaloPayload.styles] : [];
+              let privateMentions = alert.zaloPayload.mentions ? [...alert.zaloPayload.mentions] : [];
+
+              if (targetPharmacy.mentionAll && targetPharmacy.zaloTargetType === 'group') {
+                const mentionPrefix = '@All ';
+                privateMsg = mentionPrefix + privateMsg;
+                // Dịch chuyển các styles theo độ dài tiền tố
+                privateStyles = privateStyles.map((s) => ({ ...s, start: s.start + mentionPrefix.length }));
+                // Dịch chuyển các mentions hiện có
+                privateMentions = privateMentions.map((m) => ({ ...m, pos: m.pos + mentionPrefix.length }));
+                // Thêm mention @All ở đầu tin nhắn
+                privateMentions.unshift({
+                  pos: 0,
+                  uid: '-1',
+                  len: '@All'.length,
+                  name: 'All',
+                });
+              }
+
               dispatchZaloAlert({
                 alertKey: `${alert.id}-private-${targetPharmacy.id}`,
-                message: alert.zaloPayload.message,
-                styles: alert.zaloPayload.styles,
+                message: privateMsg,
+                styles: privateStyles,
                 urgency: alert.zaloPayload.urgency,
-                mentions: alert.zaloPayload.mentions,
+                mentions: privateMentions,
                 forceSend: alert.type === 'reinforced' || alert.type === 'low_traffic',
                 targetUrl: targetPharmacy.url,
                 targetZoom: targetPharmacy.captureZoom || 0.85,
