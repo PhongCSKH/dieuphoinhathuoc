@@ -125,6 +125,7 @@ export async function dispatchZaloAlert(params: {
   targetType?: 'group' | 'user';
   targetId?: string;
   targetName?: string;
+  cooldownMinutes?: number;
 }): Promise<{ success: boolean; skipped?: boolean; reason?: string }> {
   try {
     const res = await fetch(`${ZALO_BRIDGE_BASE}/api/send-alert`, {

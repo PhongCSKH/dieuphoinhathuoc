@@ -48,8 +48,14 @@ export const App: React.FC = () => {
 
   // Previous pharmacies ref for diffing events
   const prevPharmaciesRef = useRef<PharmacyScreen[]>(pharmacies);
+  const pharmaciesRef = useRef<PharmacyScreen[]>(pharmacies);
+  pharmaciesRef.current = pharmacies;
+
   // Track pharmacies with active overload to notify when resolved
   const prevOverloadedPhsRef = useRef<Set<string>>(new Set());
+  // Client-side alert deduplication cache: key -> timestamp
+  const lastDispatchedAlertsRef = useRef<Map<string, number>>(new Map());
+  const isFetchingTelemetryRef = useRef<boolean>(false);
 
   // 2. Rules state
   const [rules, setRules] = useState<DispatchRules>(() => {
@@ -181,238 +187,271 @@ export const App: React.FC = () => {
     let isMounted = true;
 
     const fetchTelemetry = async () => {
-      let hasChanges = false;
-      const updatedList = await Promise.all(
-        pharmacies.map(async (p) => {
-          if (!p.roomId) return p;
-          try {
-            const endpoint = `https://qms.tahospital.vn/api/v1/waitqueue?room=${p.roomId}&status=lcd`;
-            const res = await fetch(endpoint, { cache: 'no-store' });
-            if (res.ok) {
-              const json = await res.json();
-              if (json.data && Array.isArray(json.data.data)) {
-                const items = json.data.data;
-                const waiting = items.filter((i: { status: number }) => i.status === 1).length;
-                const servingItems = items.filter((i: { status: number }) => i.status === 2);
-                const activeCounters = [
-                  ...new Set(
-                    servingItems.map((i: { counter: number | string }) => String(i.counter)).filter(Boolean)
-                  ),
-                ] as string[];
+      if (isFetchingTelemetryRef.current) return;
+      isFetchingTelemetryRef.current = true;
 
-                const newStats = {
-                  waitingCount: waiting,
-                  servingCount: servingItems.length,
-                  activeCounters,
-                  lastUpdated: Date.now(),
-                };
+      try {
+        let hasChanges = false;
+        const currentPhs = pharmaciesRef.current;
+        const updatedList = await Promise.all(
+          currentPhs.map(async (p) => {
+            if (!p.roomId) return p;
+            try {
+              const endpoint = `https://qms.tahospital.vn/api/v1/waitqueue?room=${p.roomId}&status=lcd`;
+              const res = await fetch(endpoint, { cache: 'no-store' });
+              if (res.ok) {
+                const json = await res.json();
+                if (json.data && Array.isArray(json.data.data)) {
+                  const items = json.data.data;
+                  const waiting = items.filter((i: { status: number }) => i.status === 1).length;
+                  const servingItems = items.filter((i: { status: number }) => i.status === 2);
+                  const activeCounters = [
+                    ...new Set(
+                      servingItems.map((i: { counter: number | string }) => String(i.counter)).filter(Boolean)
+                    ),
+                  ] as string[];
 
-                if (
-                  p.stats?.waitingCount !== newStats.waitingCount ||
-                  p.stats?.servingCount !== newStats.servingCount ||
-                  p.stats?.activeCounters.length !== newStats.activeCounters.length ||
-                  p.stats?.activeCounters.join(',') !== newStats.activeCounters.join(',')
-                ) {
-                  hasChanges = true;
+                  const newStats = {
+                    waitingCount: waiting,
+                    servingCount: servingItems.length,
+                    activeCounters,
+                    lastUpdated: Date.now(),
+                  };
+
+                  if (
+                    p.stats?.waitingCount !== newStats.waitingCount ||
+                    p.stats?.servingCount !== newStats.servingCount ||
+                    p.stats?.activeCounters.length !== newStats.activeCounters.length ||
+                    p.stats?.activeCounters.join(',') !== newStats.activeCounters.join(',')
+                  ) {
+                    hasChanges = true;
+                  }
+
+                  return { ...p, stats: newStats };
                 }
-
-                return { ...p, stats: newStats };
               }
+            } catch {
+              // CORS fallback
             }
-          } catch {
-            // CORS fallback
-          }
-          return p;
-        })
-      );
-
-      const isAnyNoCounterPending = updatedList.some(
-        (p) => p.enabled && (p.stats?.waitingCount || 0) > 0 && (p.stats?.activeCounters.length || 0) === 0
-      );
-
-      if (isMounted && (hasChanges || isAnyNoCounterPending)) {
-        const { alerts: newAlerts, soundType } = evaluateDispatchRules(
-          updatedList,
-          rules,
-          prevPharmaciesRef.current
+            return p;
+          })
         );
 
-        if (hasChanges) {
-          setPharmacies(updatedList);
-        }
-        setAlerts(newAlerts);
+        const isAnyNoCounterPending = updatedList.some(
+          (p) => p.enabled && (p.stats?.waitingCount || 0) > 0 && (p.stats?.activeCounters.length || 0) === 0
+        );
 
-        if (rules.soundEnabled && soundType) {
-          soundManager.play(soundType);
-        }
+        if (isMounted && (hasChanges || isAnyNoCounterPending)) {
+          const { alerts: newAlerts, soundType } = evaluateDispatchRules(
+            updatedList,
+            rules,
+            prevPharmaciesRef.current
+          );
 
-        // Tự động chuyển tiếp cảnh báo đến Zalo cá nhân / nhóm theo đúng Kịch Bản của Admin
-        for (const alert of newAlerts) {
-          if (alert.pharmacyId && (alert.type === 'overload' || alert.type === 'no_counter')) {
-            prevOverloadedPhsRef.current.add(alert.pharmacyId);
+          if (hasChanges) {
+            setPharmacies(updatedList);
+          }
+          setAlerts(newAlerts);
+
+          if (rules.soundEnabled && soundType) {
+            soundManager.play(soundType);
           }
 
-          // Chỉ gửi tin nhắn khi kịch bản được kích hoạt và BẬT gửi Zalo
-          if (alert.zaloPayload) {
-            let imageBase64: string | undefined = undefined;
-
-            // Nếu kịch bản yêu cầu đính kèm ảnh chụp màn hình
-            if (alert.zaloPayload.attachScreenshot) {
-              const snapshot = await generateDispatchSnapshot({
-                pharmacies: updatedList,
-                targetPharmacyId: alert.pharmacyId,
-                mode: alert.zaloPayload.screenshotMode || 'all',
-                alertTitle: alert.message,
-              });
-              if (snapshot) {
-                imageBase64 = snapshot;
-              }
+          // Tự động chuyển tiếp cảnh báo đến Zalo cá nhân / nhóm theo đúng Kịch Bản của Admin
+          for (const alert of newAlerts) {
+            if (alert.pharmacyId && (alert.type === 'overload' || alert.type === 'no_counter')) {
+              prevOverloadedPhsRef.current.add(alert.pharmacyId);
             }
 
-            // 1. Luôn luôn gửi vào Nhóm Chung điều phối (Kênh tổng)
-            const alertPharmacy = alert.pharmacyId ? updatedList.find((p) => p.id === alert.pharmacyId) : undefined;
-            dispatchZaloAlert({
-              alertKey: alert.id,
-              message: alert.zaloPayload.message,
-              styles: alert.zaloPayload.styles,
-              urgency: alert.zaloPayload.urgency,
-              mentions: alert.zaloPayload.mentions,
-              forceSend: alert.type === 'reinforced' || alert.type === 'low_traffic',
-              targetUrl: alert.zaloPayload.screenshotMode === 'single' && alertPharmacy?.url ? alertPharmacy.url : undefined,
-              targetZoom: alertPharmacy?.captureZoom || 0.85,
-              imageBase64,
-            });
+            // Chỉ gửi tin nhắn khi kịch bản được kích hoạt và BẬT gửi Zalo
+            if (alert.zaloPayload) {
+              const isForceSend = alert.type === 'reinforced' || alert.type === 'low_traffic';
+              const cooldownMin = alert.zaloPayload.cooldownMinutes || 3;
+              const cooldownMs = cooldownMin * 60 * 1000;
+              const now = Date.now();
 
-            // 2. Gửi KÉP vào Nhóm Riêng của quầy (nếu quầy này có cài đặt nhóm Zalo riêng)
-            const targetPharmacy = alertPharmacy;
-            if (targetPharmacy && targetPharmacy.zaloTargetId) {
-              // Đối với nhóm riêng, tạo snapshot tập trung cận cảnh quầy đó nếu có ảnh
-              let privateSnapshot: string | undefined = imageBase64;
-              if (alert.zaloPayload.attachScreenshot && alert.zaloPayload.screenshotMode !== 'single') {
-                const singleSnap = await generateDispatchSnapshot({
+              const generalKey = alert.id;
+              const lastSentGeneral = lastDispatchedAlertsRef.current.get(generalKey);
+              const canSendGeneral = isForceSend || !lastSentGeneral || (now - lastSentGeneral >= cooldownMs);
+
+              const alertPharmacy = alert.pharmacyId ? updatedList.find((p) => p.id === alert.pharmacyId) : undefined;
+              const targetPharmacy = alertPharmacy;
+              const hasPrivateGroup = Boolean(targetPharmacy && targetPharmacy.zaloTargetId);
+
+              const privateKey = targetPharmacy ? `${alert.id}-private-${targetPharmacy.id}` : '';
+              const lastSentPrivate = privateKey ? lastDispatchedAlertsRef.current.get(privateKey) : undefined;
+              const canSendPrivate = hasPrivateGroup && (isForceSend || !lastSentPrivate || (now - (lastSentPrivate || 0) >= cooldownMs));
+
+              // Chỉ chụp ảnh màn hình nếu ít nhất một kênh cần gửi cảnh báo (tránh lãng phí tài nguyên)
+              let imageBase64: string | undefined = undefined;
+              if ((canSendGeneral || canSendPrivate) && alert.zaloPayload.attachScreenshot) {
+                const snapshot = await generateDispatchSnapshot({
                   pharmacies: updatedList,
-                  targetPharmacyId: targetPharmacy.id,
-                  mode: 'single',
+                  targetPharmacyId: alert.pharmacyId,
+                  mode: alert.zaloPayload.screenshotMode || 'all',
                   alertTitle: alert.message,
                 });
-                if (singleSnap) privateSnapshot = singleSnap;
+                if (snapshot) {
+                  imageBase64 = snapshot;
+                }
               }
 
-              // Xử lý @All và @Đích danh người được chọn cho nhóm riêng
-              let privateMsg = alert.zaloPayload.message;
-              let privateStyles = alert.zaloPayload.styles ? [...alert.zaloPayload.styles] : [];
-              let privateMentions = alert.zaloPayload.mentions ? [...alert.zaloPayload.mentions] : [];
+              // 1. Luôn luôn gửi vào Nhóm Chung điều phối (Kênh tổng)
+              if (canSendGeneral) {
+                lastDispatchedAlertsRef.current.set(generalKey, now);
+                dispatchZaloAlert({
+                  alertKey: generalKey,
+                  message: alert.zaloPayload.message,
+                  styles: alert.zaloPayload.styles,
+                  urgency: alert.zaloPayload.urgency,
+                  mentions: alert.zaloPayload.mentions,
+                  forceSend: isForceSend,
+                  cooldownMinutes: cooldownMin,
+                  targetUrl: alert.zaloPayload.screenshotMode === 'single' && alertPharmacy?.url ? alertPharmacy.url : undefined,
+                  targetZoom: alertPharmacy?.captureZoom || 0.85,
+                  imageBase64,
+                });
+              }
 
-              let privatePrefix = '';
-              const newPrivateMentions: Array<{ pos: number; uid: string; len: number; name?: string }> = [];
+              // 2. Gửi KÉP vào Nhóm Riêng của quầy (nếu quầy này có cài đặt nhóm Zalo riêng)
+              if (canSendPrivate && targetPharmacy) {
+                lastDispatchedAlertsRef.current.set(privateKey, now);
 
-              if (targetPharmacy.zaloTargetType === 'group') {
-                if (targetPharmacy.mentionAll) {
-                  const allTag = '@All ';
-                  newPrivateMentions.push({
-                    pos: privatePrefix.length,
-                    uid: '-1',
-                    len: '@All'.length,
-                    name: 'All',
+                // Đối với nhóm riêng, tạo snapshot tập trung cận cảnh quầy đó nếu có ảnh
+                let privateSnapshot: string | undefined = imageBase64;
+                if (alert.zaloPayload.attachScreenshot && alert.zaloPayload.screenshotMode !== 'single') {
+                  const singleSnap = await generateDispatchSnapshot({
+                    pharmacies: updatedList,
+                    targetPharmacyId: targetPharmacy.id,
+                    mode: 'single',
+                    alertTitle: alert.message,
                   });
-                  privatePrefix += allTag;
+                  if (singleSnap) privateSnapshot = singleSnap;
                 }
-                if (Array.isArray(targetPharmacy.mentionMembers) && targetPharmacy.mentionMembers.length > 0) {
-                  targetPharmacy.mentionMembers.forEach((m) => {
-                    const tag = `@${m.name} `;
-                    newPrivateMentions.push({
-                      pos: privatePrefix.length,
-                      uid: m.uid,
-                      len: `@${m.name}`.length,
-                      name: m.name,
+
+                // Xử lý @All và @Đích danh người được chọn cho nhóm riêng: ĐẶT Ở DƯỚI CÙNG TIN NHẮN
+                let privateMsg = alert.zaloPayload.message;
+                const privateStyles = alert.zaloPayload.styles ? [...alert.zaloPayload.styles] : [];
+                let privateMentions = alert.zaloPayload.mentions ? [...alert.zaloPayload.mentions] : [];
+
+                if (targetPharmacy.zaloTargetType === 'group') {
+                  const tagsToAppend: Array<{ tag: string; uid: string; name: string }> = [];
+                  if (targetPharmacy.mentionAll) {
+                    tagsToAppend.push({ tag: '@All', uid: '-1', name: 'All' });
+                  }
+                  if (Array.isArray(targetPharmacy.mentionMembers) && targetPharmacy.mentionMembers.length > 0) {
+                    targetPharmacy.mentionMembers.forEach((m) => {
+                      tagsToAppend.push({ tag: `@${m.name}`, uid: m.uid, name: m.name });
                     });
-                    privatePrefix += tag;
-                  });
+                  }
+
+                  if (tagsToAppend.length > 0) {
+                    const suffixHeader = '\n\n👉 Kính chuyển: ';
+                    const tagStrings = tagsToAppend.map((t) => t.tag).join(' ');
+                    privateMsg = privateMsg + suffixHeader + tagStrings;
+
+                    let searchStartIndex = privateMsg.length - tagStrings.length;
+                    const newPrivateMentions: Array<{ pos: number; uid: string; len: number; name?: string }> = [];
+                    tagsToAppend.forEach((tagItem) => {
+                      const foundPos = privateMsg.indexOf(tagItem.tag, searchStartIndex);
+                      if (foundPos !== -1) {
+                        newPrivateMentions.push({
+                          pos: foundPos,
+                          uid: tagItem.uid,
+                          len: tagItem.tag.length,
+                          name: tagItem.name,
+                        });
+                        searchStartIndex = foundPos + tagItem.tag.length;
+                      }
+                    });
+                    privateMentions = [...privateMentions, ...newPrivateMentions];
+                  }
                 }
-              }
 
-              if (privatePrefix) {
-                privateMsg = privatePrefix + privateMsg;
-                privateStyles = privateStyles.map((s) => ({ ...s, start: s.start + privatePrefix.length }));
-                privateMentions = privateMentions.map((m) => ({ ...m, pos: m.pos + privatePrefix.length }));
-                privateMentions = [...newPrivateMentions, ...privateMentions];
+                dispatchZaloAlert({
+                  alertKey: privateKey,
+                  message: privateMsg,
+                  styles: privateStyles,
+                  urgency: alert.zaloPayload.urgency,
+                  mentions: privateMentions,
+                  forceSend: isForceSend,
+                  cooldownMinutes: cooldownMin,
+                  targetUrl: targetPharmacy.url,
+                  targetZoom: targetPharmacy.captureZoom || 0.85,
+                  imageBase64: privateSnapshot,
+                  targetType: targetPharmacy.zaloTargetType || 'group',
+                  targetId: targetPharmacy.zaloTargetId,
+                  targetName: targetPharmacy.zaloTargetName || `Nhóm riêng: ${targetPharmacy.name}`,
+                });
               }
-
-              dispatchZaloAlert({
-                alertKey: `${alert.id}-private-${targetPharmacy.id}`,
-                message: privateMsg,
-                styles: privateStyles,
-                urgency: alert.zaloPayload.urgency,
-                mentions: privateMentions,
-                forceSend: alert.type === 'reinforced' || alert.type === 'low_traffic',
-                targetUrl: targetPharmacy.url,
-                targetZoom: targetPharmacy.captureZoom || 0.85,
-                imageBase64: privateSnapshot,
-                targetType: targetPharmacy.zaloTargetType || 'group',
-                targetId: targetPharmacy.zaloTargetId,
-                targetName: targetPharmacy.zaloTargetName || `Nhóm riêng: ${targetPharmacy.name}`,
-              });
             }
           }
-        }
 
-        // Tự động thông báo khi nhà thuốc đã hạ tải và ổn định an toàn trở lại
-        for (const pharmacyId of Array.from(prevOverloadedPhsRef.current)) {
-          const isStillOverloaded = newAlerts.some(
-            (a) => a.pharmacyId === pharmacyId && (a.type === 'overload' || a.type === 'no_counter')
-          );
-          if (!isStillOverloaded) {
-            const ph = updatedList.find((p) => p.id === pharmacyId);
-            // Chỉ gửi thông báo hạ tải khi nhà thuốc đang có quầy phục vụ
-            if (ph && (ph.stats?.activeCounters.length || 0) > 0) {
-              const scLowTraffic = rules.scenarios?.find((s) => s.type === 'low_traffic');
-              if (scLowTraffic && scLowTraffic.enabled && scLowTraffic.zalo?.enabled) {
-                const compiled = compileZaloMessage(
-                  scLowTraffic.zalo.messageTemplate,
-                  buildAllVariables(ph, updatedList, {
-                    so_khach: ph.stats?.waitingCount || 0,
-                    so_quay: ph.stats?.activeCounters.length || 0,
-                  }),
-                  scLowTraffic.zalo.mentionMembers,
-                  scLowTraffic.zalo.styles
-                );
+          // Tự động thông báo khi nhà thuốc đã hạ tải và ổn định an toàn trở lại
+          for (const pharmacyId of Array.from(prevOverloadedPhsRef.current)) {
+            const isStillOverloaded = newAlerts.some(
+              (a) => a.pharmacyId === pharmacyId && (a.type === 'overload' || a.type === 'no_counter')
+            );
+            if (!isStillOverloaded) {
+              // Giải phóng bộ đệm cooldown client để sẵn sàng cho chu kỳ cảnh báo mới sau này
+              lastDispatchedAlertsRef.current.delete(`overload-${pharmacyId}`);
+              lastDispatchedAlertsRef.current.delete(`no-counter-${pharmacyId}`);
+              lastDispatchedAlertsRef.current.delete(`overload-${pharmacyId}-private-${pharmacyId}`);
+              lastDispatchedAlertsRef.current.delete(`no-counter-${pharmacyId}-private-${pharmacyId}`);
 
-                // 1. Gửi thông báo hạ tải vào Nhóm Chung
-                dispatchZaloAlert({
-                  alertKey: `resolved-${pharmacyId}`,
-                  message: compiled.message,
-                  styles: compiled.styles,
-                  urgency: scLowTraffic.zalo.urgency,
-                  mentions: compiled.mentions,
-                  isResolved: true,
-                  forceSend: true,
-                });
+              const ph = updatedList.find((p) => p.id === pharmacyId);
+              // Chỉ gửi thông báo hạ tải khi nhà thuốc đang có quầy phục vụ
+              if (ph && (ph.stats?.activeCounters.length || 0) > 0) {
+                const scLowTraffic = rules.scenarios?.find((s) => s.type === 'low_traffic');
+                if (scLowTraffic && scLowTraffic.enabled && scLowTraffic.zalo?.enabled) {
+                  const compiled = compileZaloMessage(
+                    scLowTraffic.zalo.messageTemplate,
+                    buildAllVariables(ph, updatedList, {
+                      so_khach: ph.stats?.waitingCount || 0,
+                      so_quay: ph.stats?.activeCounters.length || 0,
+                    }),
+                    scLowTraffic.zalo.mentionMembers,
+                    scLowTraffic.zalo.styles
+                  );
 
-                // 2. Gửi thêm vào Nhóm Riêng của nhà thuốc (nếu có cài đặt)
-                if (ph.zaloTargetId) {
+                  // 1. Gửi thông báo hạ tải vào Nhóm Chung
                   dispatchZaloAlert({
-                    alertKey: `resolved-${pharmacyId}-private`,
+                    alertKey: `resolved-${pharmacyId}`,
                     message: compiled.message,
                     styles: compiled.styles,
                     urgency: scLowTraffic.zalo.urgency,
                     mentions: compiled.mentions,
                     isResolved: true,
                     forceSend: true,
-                    targetType: ph.zaloTargetType || 'group',
-                    targetId: ph.zaloTargetId,
-                    targetName: ph.zaloTargetName || `Nhóm riêng: ${ph.name}`,
                   });
+
+                  // 2. Gửi thêm vào Nhóm Riêng của nhà thuốc (nếu có cài đặt)
+                  if (ph.zaloTargetId) {
+                    dispatchZaloAlert({
+                      alertKey: `resolved-${pharmacyId}-private`,
+                      message: compiled.message,
+                      styles: compiled.styles,
+                      urgency: scLowTraffic.zalo.urgency,
+                      mentions: compiled.mentions,
+                      isResolved: true,
+                      forceSend: true,
+                      targetType: ph.zaloTargetType || 'group',
+                      targetId: ph.zaloTargetId,
+                      targetName: ph.zaloTargetName || `Nhóm riêng: ${ph.name}`,
+                    });
+                  }
                 }
               }
+              prevOverloadedPhsRef.current.delete(pharmacyId);
             }
-            prevOverloadedPhsRef.current.delete(pharmacyId);
           }
-        }
 
-        prevPharmaciesRef.current = updatedList;
+          prevPharmaciesRef.current = updatedList;
+        }
+      } finally {
+        isFetchingTelemetryRef.current = false;
       }
     };
-
 
     fetchTelemetry();
     const interval = setInterval(fetchTelemetry, (rules.telemetryInterval || 4) * 1000);
@@ -421,7 +460,7 @@ export const App: React.FC = () => {
       isMounted = false;
       clearInterval(interval);
     };
-  }, [pharmacies, rules]);
+  }, [rules]);
 
   const focusedPharmacy = pharmacies.find((p) => p.id === focusPharmacyId);
 

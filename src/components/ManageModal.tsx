@@ -701,36 +701,37 @@ export const ManageModal: React.FC<ManageModalProps> = ({
 
                                 let mentions: Array<{ pos: number; uid: string; len: number; name?: string }> = [];
                                 
-                                // Xử lý @All và @Đích danh người được chọn
-                                let mentionPrefix = '';
+                                // Xử lý @All và @Đích danh người được chọn: ĐẶT Ở DƯỚI CÙNG TIN NHẮN
                                 if (item.zaloTargetType === 'group') {
+                                  const tagsToAppend: Array<{ tag: string; uid: string; name: string }> = [];
                                   if (item.mentionAll) {
-                                    const allTag = '@All ';
-                                    mentions.push({
-                                      pos: mentionPrefix.length,
-                                      uid: '-1',
-                                      len: '@All'.length,
-                                      name: 'All',
-                                    });
-                                    mentionPrefix += allTag;
+                                    tagsToAppend.push({ tag: '@All', uid: '-1', name: 'All' });
                                   }
                                   if (Array.isArray(item.mentionMembers) && item.mentionMembers.length > 0) {
                                     item.mentionMembers.forEach((m) => {
-                                      const tag = `@${m.name} `;
-                                      mentions.push({
-                                        pos: mentionPrefix.length,
-                                        uid: m.uid,
-                                        len: `@${m.name}`.length,
-                                        name: m.name,
-                                      });
-                                      mentionPrefix += tag;
+                                      tagsToAppend.push({ tag: `@${m.name}`, uid: m.uid, name: m.name });
                                     });
                                   }
-                                }
 
-                                if (mentionPrefix) {
-                                  testMsg = mentionPrefix + testMsg;
-                                  styles.forEach((s) => s.start += mentionPrefix.length);
+                                  if (tagsToAppend.length > 0) {
+                                    const suffixHeader = '\n\n👉 Kính chuyển: ';
+                                    const tagStrings = tagsToAppend.map((t) => t.tag).join(' ');
+                                    testMsg = testMsg + suffixHeader + tagStrings;
+
+                                    let searchStartIndex = testMsg.length - tagStrings.length;
+                                    tagsToAppend.forEach((tagItem) => {
+                                      const foundPos = testMsg.indexOf(tagItem.tag, searchStartIndex);
+                                      if (foundPos !== -1) {
+                                        mentions.push({
+                                          pos: foundPos,
+                                          uid: tagItem.uid,
+                                          len: tagItem.tag.length,
+                                          name: tagItem.name,
+                                        });
+                                        searchStartIndex = foundPos + tagItem.tag.length;
+                                      }
+                                    });
+                                  }
                                 }
 
                                 const snapshot = await generateDispatchSnapshot({

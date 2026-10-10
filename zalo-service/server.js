@@ -108,6 +108,7 @@ function saveConfig() {
 
 // In-memory alert cache for smart dispatch & deduplication
 const alertHistory = new Map();
+const inProgressAlerts = new Set();
 
 // Initialize session if exists
 async function tryAutoLogin() {
@@ -546,15 +547,45 @@ app.post('/api/send-alert', async (req, res) => {
     return res.status(401).json({ error: 'Chưa đăng nhập Zalo trên máy tính' });
   }
 
-  const { alertKey, message, styles = [], urgency = 2, mentions = [], isResolved = false, forceSend = false, imageBase64 = null, targetUrl = null, targetZoom = 0.85, targetType: reqTargetType, targetId: reqTargetId, targetName: reqTargetName } = req.body;
+  const { 
+    alertKey, 
+    message, 
+    styles = [], 
+    urgency = 2, 
+    mentions = [], 
+    isResolved = false, 
+    forceSend = false, 
+    cooldownMinutes: reqCooldownMinutes,
+    imageBase64 = null, 
+    targetUrl = null, 
+    targetZoom = 0.85, 
+    targetType: reqTargetType, 
+    targetId: reqTargetId, 
+    targetName: reqTargetName 
+  } = req.body;
+
   if (!message) {
     return res.status(400).json({ error: 'Thiếu nội dung tin nhắn cảnh báo' });
   }
 
   const now = Date.now();
-  const cooldownMs = (alertConfig.cooldownMinutes || 3) * 60 * 1000;
+  const parsedCooldown = Number(reqCooldownMinutes);
+  const cooldownMinutes = (!isNaN(parsedCooldown) && parsedCooldown > 0) 
+    ? parsedCooldown 
+    : (alertConfig.cooldownMinutes || 3);
+  const cooldownMs = cooldownMinutes * 60 * 1000;
 
-  // Smart Cooldown & Deduplication:
+  // 1. Chống gửi trùng song song (In-flight locking):
+  // Nếu cảnh báo này đang trong tiến trình chụp ảnh & gửi Zalo -> Chặn ngay lập tức
+  if (alertKey && inProgressAlerts.has(alertKey)) {
+    console.log(`[Zalo Service] Cảnh báo [${alertKey}] ĐANG ĐƯỢC XỬ LÝ (In-flight lock) -> Bỏ qua request trùng`);
+    return res.json({
+      skipped: true,
+      reason: `Cảnh báo ${alertKey} đang được gửi trong luồng xử lý khác`,
+    });
+  }
+
+  // 2. Smart Cooldown & Deduplication:
   // - If forceSend -> Gửi ngay lập tức!
   // - If isResolved -> Gửi ngay lập tức và xóa lịch sử quá tải!
   // - Nếu cùng alertKey và chưa hết thời gian cooldown -> Bỏ qua để chống spam lặp lại liên tục
@@ -562,12 +593,20 @@ app.post('/api/send-alert', async (req, res) => {
     const lastSent = alertHistory.get(alertKey);
     if (lastSent && (now - lastSent.timestamp < cooldownMs)) {
       const remainingSec = Math.round((cooldownMs - (now - lastSent.timestamp)) / 1000);
-      console.log(`[Zalo Service] Giãn cách cảnh báo [${alertKey}] - Còn ${remainingSec}s nữa mới nhắc lại (Cooldown: ${alertConfig.cooldownMinutes || 3} phút)`);
+      console.log(`[Zalo Service] Giãn cách cảnh báo [${alertKey}] - Còn ${remainingSec}s nữa mới nhắc lại (Cooldown: ${cooldownMinutes} phút)`);
       return res.json({
         skipped: true,
         reason: `Cảnh báo ${alertKey} đang trong chu kỳ giãn cách (còn ${remainingSec}s)`,
       });
     }
+  }
+
+  // Khóa lock và cập nhật timestamp ngay từ đầu để chặn mọi request trùng tiếp theo trong khi đang chụp & gửi
+  if (alertKey && !forceSend && !isResolved) {
+    inProgressAlerts.add(alertKey);
+    alertHistory.set(alertKey, { timestamp: now, message });
+  } else if (alertKey) {
+    inProgressAlerts.add(alertKey);
   }
 
   try {
@@ -583,13 +622,15 @@ app.post('/api/send-alert', async (req, res) => {
         alertHistory.delete(alertKey);
         const resolvedMatch = alertKey.match(/resolved-(.+)/);
         if (resolvedMatch) {
-          const phId = resolvedMatch[1];
+          const phId = resolvedMatch[1].replace('-private', '');
           alertHistory.delete(`overload-${phId}`);
           alertHistory.delete(`no-counter-${phId}`);
+          alertHistory.delete(`overload-${phId}-private-${phId}`);
+          alertHistory.delete(`no-counter-${phId}-private-${phId}`);
         }
         console.log(`[Zalo Service] Đã hạ tải và giải phóng cảnh báo [${alertKey}]`);
       } else {
-        alertHistory.set(alertKey, { timestamp: now, message });
+        alertHistory.set(alertKey, { timestamp: Date.now(), message });
         console.log(`[Zalo Service] Đã gửi cảnh báo thành công [${alertKey}]`);
       }
     }
@@ -600,8 +641,16 @@ app.post('/api/send-alert', async (req, res) => {
       result,
     });
   } catch (err) {
+    // Nếu gửi thất bại, giải phóng timestamp để có thể thử lại
+    if (alertKey && !isResolved) {
+      alertHistory.delete(alertKey);
+    }
     console.error('[Zalo Service] Lỗi gửi cảnh báo:', err);
     res.status(500).json({ error: err.message });
+  } finally {
+    if (alertKey) {
+      inProgressAlerts.delete(alertKey);
+    }
   }
 });
 
