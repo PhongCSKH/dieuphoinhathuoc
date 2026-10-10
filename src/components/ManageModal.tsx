@@ -564,7 +564,10 @@ export const ManageModal: React.FC<ManageModalProps> = ({
                             <option value={0.90}>90% (Hơi thu nhỏ)</option>
                             <option value={0.85}>85% (Chuẩn trọn vẹn)</option>
                             <option value={0.80}>80% (Góc rộng)</option>
-                            <option value={0.75}>75% (Siêu rộng)</option>
+                            <option value={0.75}>75% (Rộng)</option>
+                            <option value={0.70}>70% (Rất rộng)</option>
+                            <option value={0.60}>60% (Siêu rộng 60%)</option>
+                            <option value={0.50}>50% (Toàn cảnh 50%)</option>
                           </select>
                         </div>
 
