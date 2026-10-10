@@ -24,6 +24,8 @@ import { PharmacyScreen, DispatchRules, LayoutMode, AlertScenario } from '../typ
 import { DEFAULT_PHARMACIES, SCALE_OPTIONS, DEFAULT_SCENARIOS } from '../constants';
 import { ZaloSettingsTab } from './ZaloSettingsTab';
 import { ScenarioManagementTab } from './ScenarioManagementTab';
+import { fetchZaloContacts, dispatchZaloAlert } from '../utils/zalo';
+import { ZaloContact } from '../types';
 
 interface ManageModalProps {
   isOpen: boolean;
@@ -59,7 +61,17 @@ export const ManageModal: React.FC<ManageModalProps> = ({
     };
   });
   const [notification, setNotification] = useState<string | null>(null);
+  const [zaloContacts, setZaloContacts] = useState<{ self: ZaloContact; groups: ZaloContact[]; friends: ZaloContact[] } | null>(null);
   const wasOpenRef = React.useRef(false);
+
+  // Load danh bạ Zalo khi mở modal
+  useEffect(() => {
+    if (isOpen) {
+      fetchZaloContacts().then((c) => {
+        if (c) setZaloContacts(c);
+      });
+    }
+  }, [isOpen]);
 
   // Chỉ sync state khi modal vừa chuyển từ ĐÓNG sang MỞ (tránh bị telemetry ghi đè trong lúc đang sửa)
   useEffect(() => {
@@ -470,6 +482,103 @@ export const ManageModal: React.FC<ManageModalProps> = ({
                           <FontAwesomeIcon icon={faTrashCan} className="text-xs" />
                         </button>
                       </div>
+                    </div>
+
+                    {/* Dòng bổ sung: Cấu hình Kênh Zalo Riêng Biệt cho Quầy (Bắn kép đồng thời với Nhóm Chung) */}
+                    <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
+                          <FontAwesomeIcon icon={faComments} className="text-sky-400 text-[10px]" />
+                          <span>Nhóm Zalo nhận riêng của quầy:</span>
+                        </span>
+                        <select
+                          value={item.zaloTargetId ? `${item.zaloTargetType || 'group'}:${item.zaloTargetId}` : ''}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (!val) {
+                              handleUpdateItem(item.id, {
+                                zaloTargetId: undefined,
+                                zaloTargetName: undefined,
+                                zaloTargetType: undefined,
+                              });
+                            } else {
+                              const [tType, tId] = val.split(':');
+                              let tName = '';
+                              if (tType === 'group') {
+                                const found = zaloContacts?.groups.find((g) => g.id === tId);
+                                tName = found ? found.name : `Nhóm ${tId}`;
+                              } else {
+                                const found = zaloContacts?.friends.find((f) => f.id === tId);
+                                tName = found ? found.name : `Cá nhân ${tId}`;
+                              }
+                              handleUpdateItem(item.id, {
+                                zaloTargetType: tType as 'group' | 'user',
+                                zaloTargetId: tId,
+                                zaloTargetName: tName,
+                              });
+                            }
+                          }}
+                          className={`bg-slate-950 border rounded-lg px-2.5 py-1 text-xs outline-none transition max-w-[280px] truncate ${
+                            item.zaloTargetId
+                              ? 'border-emerald-500/60 text-emerald-300 font-semibold ring-1 ring-emerald-500/30'
+                              : 'border-slate-700 text-slate-400'
+                          }`}
+                        >
+                          <option value="">(Chỉ nhận tại Nhóm Chung các nhà thuốc)</option>
+                          {zaloContacts?.groups && zaloContacts.groups.length > 0 && (
+                            <optgroup label="Nhóm Zalo">
+                              {zaloContacts.groups.map((g) => (
+                                <option key={g.id} value={`group:${g.id}`}>
+                                  👥 {g.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {zaloContacts?.friends && zaloContacts.friends.length > 0 && (
+                            <optgroup label="Cá Nhân / Bạn Bè">
+                              {zaloContacts.friends.map((f) => (
+                                <option key={f.id} value={`user:${f.id}`}>
+                                  👤 {f.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                        </select>
+                      </div>
+
+                      {item.zaloTargetId ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-emerald-400 font-mono">
+                            ● Sẽ gửi song song: Nhóm Chung + {item.zaloTargetName || item.zaloTargetId}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const res = await dispatchZaloAlert({
+                                alertKey: `test-pharmacy-${item.id}-${Date.now()}`,
+                                message: `🔔 [THỬ NGHIỆM KÊNH RIÊNG - ${item.name}]\n• Kiểm tra định tuyến tin nhắn thành công!\n• Thời gian: ${new Date().toLocaleTimeString('vi-VN')}`,
+                                urgency: 0,
+                                forceSend: true,
+                                targetType: item.zaloTargetType || 'group',
+                                targetId: item.zaloTargetId,
+                                targetName: item.zaloTargetName,
+                              });
+                              if (res.success) {
+                                showNotification(`Đã gửi thử tin Zalo đến "${item.zaloTargetName || item.name}"!`);
+                              } else {
+                                showNotification(`Gửi thất bại: ${res.reason || 'Lỗi kết nối'}`);
+                              }
+                            }}
+                            className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded text-[11px] transition"
+                          >
+                            Gửi thử
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-slate-500 italic">
+                          💡 Chọn nhóm Zalo nếu bạn muốn gửi thêm thông báo riêng về cho nhân sự quầy này.
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))}

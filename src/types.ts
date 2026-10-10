@@ -9,6 +9,9 @@ export interface PharmacyScreen {
   notes?: string;
   enabled: boolean;
   stats?: PharmacyStats;
+  zaloTargetType?: 'group' | 'user'; // Kênh Zalo riêng (Nhóm hoặc cá nhân)
+  zaloTargetId?: string; // ID nhóm Zalo riêng (vd: ID nhóm NT4)
+  zaloTargetName?: string; // Tên nhóm riêng hiển thị
 }
 
 export interface PharmacyStats {

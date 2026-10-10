@@ -13,7 +13,6 @@ import { compileZaloMessage } from './utils/zaloTextCompiler';
 import { soundManager } from './utils/audio';
 import { 
   dispatchZaloAlert, 
-  formatZaloResolvedAlert,
 } from './utils/zalo';
 import { generateDispatchSnapshot } from './utils/snapshotGenerator';
 
@@ -270,6 +269,7 @@ export const App: React.FC = () => {
               }
             }
 
+            // 1. Luôn luôn gửi vào Nhóm Chung điều phối (Kênh tổng)
             dispatchZaloAlert({
               alertKey: alert.id,
               message: alert.zaloPayload.message,
@@ -279,6 +279,35 @@ export const App: React.FC = () => {
               forceSend: alert.type === 'reinforced' || alert.type === 'low_traffic',
               imageBase64,
             });
+
+            // 2. Gửi KÉP vào Nhóm Riêng của quầy (nếu quầy này có cài đặt nhóm Zalo riêng)
+            const targetPharmacy = alert.pharmacyId ? updatedList.find((p) => p.id === alert.pharmacyId) : undefined;
+            if (targetPharmacy && targetPharmacy.zaloTargetId) {
+              // Đối với nhóm riêng, tạo snapshot tập trung cận cảnh quầy đó nếu có ảnh
+              let privateSnapshot: string | undefined = imageBase64;
+              if (alert.zaloPayload.attachScreenshot && alert.zaloPayload.screenshotMode !== 'single') {
+                const singleSnap = await generateDispatchSnapshot({
+                  pharmacies: updatedList,
+                  targetPharmacyId: targetPharmacy.id,
+                  mode: 'single',
+                  alertTitle: alert.message,
+                });
+                if (singleSnap) privateSnapshot = singleSnap;
+              }
+
+              dispatchZaloAlert({
+                alertKey: `${alert.id}-private-${targetPharmacy.id}`,
+                message: alert.zaloPayload.message,
+                styles: alert.zaloPayload.styles,
+                urgency: alert.zaloPayload.urgency,
+                mentions: alert.zaloPayload.mentions,
+                forceSend: alert.type === 'reinforced' || alert.type === 'low_traffic',
+                imageBase64: privateSnapshot,
+                targetType: targetPharmacy.zaloTargetType || 'group',
+                targetId: targetPharmacy.zaloTargetId,
+                targetName: targetPharmacy.zaloTargetName || `Nhóm riêng: ${targetPharmacy.name}`,
+              });
+            }
           }
         }
 
@@ -302,6 +331,8 @@ export const App: React.FC = () => {
                   scLowTraffic.zalo.mentionMembers,
                   scLowTraffic.zalo.styles
                 );
+
+                // 1. Gửi thông báo hạ tải vào Nhóm Chung
                 dispatchZaloAlert({
                   alertKey: `resolved-${pharmacyId}`,
                   message: compiled.message,
@@ -311,20 +342,22 @@ export const App: React.FC = () => {
                   isResolved: true,
                   forceSend: true,
                 });
-              } else if (!rules.scenarios) {
-                const formatted = formatZaloResolvedAlert({
-                  pharmacyName: ph.name,
-                  waitingCount: ph.stats?.waitingCount || 0,
-                  activeCountersCount: ph.stats?.activeCounters.length || 0,
-                });
-                dispatchZaloAlert({
-                  alertKey: `resolved-${pharmacyId}`,
-                  message: formatted.text,
-                  styles: formatted.styles,
-                  urgency: formatted.urgency,
-                  isResolved: true,
-                  forceSend: true,
-                });
+
+                // 2. Gửi thêm vào Nhóm Riêng của nhà thuốc (nếu có cài đặt)
+                if (ph.zaloTargetId) {
+                  dispatchZaloAlert({
+                    alertKey: `resolved-${pharmacyId}-private`,
+                    message: compiled.message,
+                    styles: compiled.styles,
+                    urgency: scLowTraffic.zalo.urgency,
+                    mentions: compiled.mentions,
+                    isResolved: true,
+                    forceSend: true,
+                    targetType: ph.zaloTargetType || 'group',
+                    targetId: ph.zaloTargetId,
+                    targetName: ph.zaloTargetName || `Nhóm riêng: ${ph.name}`,
+                  });
+                }
               }
             }
             prevOverloadedPhsRef.current.delete(pharmacyId);

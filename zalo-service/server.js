@@ -471,7 +471,7 @@ app.post('/api/send-alert', async (req, res) => {
     return res.status(401).json({ error: 'Chưa đăng nhập Zalo trên máy tính' });
   }
 
-  const { alertKey, message, styles = [], urgency = 2, mentions = [], isResolved = false, forceSend = false, imageBase64 = null } = req.body;
+  const { alertKey, message, styles = [], urgency = 2, mentions = [], isResolved = false, forceSend = false, imageBase64 = null, targetType: reqTargetType, targetId: reqTargetId, targetName: reqTargetName } = req.body;
   if (!message) {
     return res.status(400).json({ error: 'Thiếu nội dung tin nhắn cảnh báo' });
   }
@@ -496,8 +496,9 @@ app.post('/api/send-alert', async (req, res) => {
   }
 
   try {
-    const targetType = alertConfig.targetType;
-    const targetId = alertConfig.targetId;
+    const targetType = reqTargetType || alertConfig.targetType;
+    const targetId = reqTargetId !== undefined ? reqTargetId : alertConfig.targetId;
+    const destinationLabel = reqTargetName || (targetId ? `Nhóm/ID ${targetId}` : alertConfig.targetName || 'Zalo');
 
     const result = await executeSendMessage(message, targetType, targetId, styles, urgency, mentions, imageBase64);
     
@@ -520,7 +521,7 @@ app.post('/api/send-alert', async (req, res) => {
 
     res.json({
       success: true,
-      deliveredTo: alertConfig.targetName || 'Zalo',
+      deliveredTo: destinationLabel,
       result,
     });
   } catch (err) {

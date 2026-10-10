@@ -120,6 +120,9 @@ export async function dispatchZaloAlert(params: {
   isResolved?: boolean;
   forceSend?: boolean;
   imageBase64?: string;
+  targetType?: 'group' | 'user';
+  targetId?: string;
+  targetName?: string;
 }): Promise<{ success: boolean; skipped?: boolean; reason?: string }> {
   try {
     const res = await fetch(`${ZALO_BRIDGE_BASE}/api/send-alert`, {
