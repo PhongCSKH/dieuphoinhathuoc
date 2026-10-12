@@ -11,7 +11,7 @@ startupFolder = WshShell.SpecialFolders("Startup")
 startupLnkPath = startupFolder & "\ZaloBridge_Startup.lnk"
 Set scStartup = WshShell.CreateShortcut(startupLnkPath)
 scStartup.TargetPath = "wscript.exe"
-scStartup.Arguments = """" & zaloDir & "\start_service_hidden.vbs"""
+scStartup.Arguments = """" & zaloDir & "\start_tray.vbs"""
 scStartup.WorkingDirectory = zaloDir
 scStartup.Description = "Tu dong khoi dong Zalo Dispatch Bridge chay ngam"
 scStartup.Save

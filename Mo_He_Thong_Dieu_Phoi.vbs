@@ -1,11 +1,12 @@
 Set WshShell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
-rootDir = "C:\Users\cuongnq\Desktop\IUPHIN~1"
+
+rootDir = fso.GetParentFolderName(WScript.ScriptFullName)
 zaloDir = rootDir & "\zalo-service"
 
-' 1. Kiem tra xem port 5050 da chay chua. Neu chua, khoi dong ngam bang WScript
-checkCmd = "powershell -NoProfile -WindowStyle Hidden -Command ""$tcp = New-Object System.Net.Sockets.TcpClient; try { $tcp.Connect('127.0.0.1', 5050); $open = $true; $tcp.Close(); } catch { $open = $false }; if (-not $open) { Start-Process 'node' -ArgumentList 'server.js' -WorkingDirectory '" & zaloDir & "' -WindowStyle Hidden; Start-Sleep -Milliseconds 1200 }"""
-WshShell.Run checkCmd, 0, True
+' 1. Khoi dong Trinh quan ly Khay he thong (System Tray Icon) va Dịch vu ngam 24/7
+trayStart = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command ""$proc = Get-CimInstance Win32_Process -Filter \""CommandLine LIKE '%tray_monitor.ps1%'\""; if (-not $proc) { Start-Process 'wscript.exe' -ArgumentList '\""" & zaloDir & "\start_tray.vbs\""' -WindowStyle Hidden }"""
+WshShell.Run trayStart, 0, False
 
 ' 2. Tim Chrome va khoi dong che do App sach se
 chromePath = ""
