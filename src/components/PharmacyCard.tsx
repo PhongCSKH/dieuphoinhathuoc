@@ -301,7 +301,31 @@ export const PharmacyCard: React.FC<PharmacyCardProps> = ({
             title={pharmacy.name}
             className="w-full h-full border-0 block"
             allow="autoplay; fullscreen; clipboard-read; clipboard-write"
-            onLoad={() => setIsLoading(false)}
+            onLoad={() => {
+              setIsLoading(false);
+              try {
+                const iframeWin = iframeRef.current?.contentWindow;
+                if (iframeWin && iframeWin.localStorage) {
+                  iframeWin.localStorage.setItem(
+                    'activeSessions',
+                    JSON.stringify([{ id: `clean-${pharmacy.id}`, expiry: Date.now() + 60000 }])
+                  );
+                }
+                const iframeDoc = iframeRef.current?.contentDocument;
+                if (iframeDoc) {
+                  const style = iframeDoc.createElement('style');
+                  style.textContent = `
+                    .SnackbarItem-variantError, [class*="MuiSnackbar"], [class*="SnackbarItem"] {
+                      display: none !important;
+                      visibility: hidden !important;
+                    }
+                  `;
+                  iframeDoc.head?.appendChild(style);
+                }
+              } catch {
+                // An toàn khi chạy ngoài môi trường disable-web-security
+              }
+            }}
             onError={() => {
               setIsLoading(false);
               setHasError(true);

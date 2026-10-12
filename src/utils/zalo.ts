@@ -69,6 +69,19 @@ export async function updateZaloConfig(config: Partial<ZaloAlertConfig>): Promis
   }
 }
 
+export async function sendHeartbeat(pharmacies: any[], rules: any): Promise<boolean> {
+  try {
+    const res = await fetch(`${ZALO_BRIDGE_BASE}/api/heartbeat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pharmacies, rules }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function triggerTestZalo(imageBase64?: string): Promise<{ success: boolean; message: string }> {
   try {
     const res = await fetch(`${ZALO_BRIDGE_BASE}/api/test-alert`, {

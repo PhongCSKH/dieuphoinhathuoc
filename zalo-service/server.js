@@ -685,6 +685,315 @@ app.post('/api/test-alert', async (req, res) => {
   }
 });
 
+// 8. Template Compiler & Persisted Rules / Pharmacies
+const RULES_FILE = path.join(USER_DATA_DIR, 'rules.json');
+const PHARMACIES_FILE = path.join(USER_DATA_DIR, 'pharmacies.json');
+
+const DEFAULT_SCENARIOS_PRESET = [
+  {
+    id: 'scenario-no-counter',
+    name: 'Chưa mở quầy khi có khách chờ',
+    enabled: true,
+    type: 'no_counter',
+    zalo: {
+      enabled: true,
+      urgency: 2,
+      cooldownMinutes: 2,
+      messageTemplate: '🚨 [KHẨN] [upper]{ten_quay}[/upper] chưa mở quầy!',
+      styles: [],
+    },
+  },
+  {
+    id: 'scenario-overload',
+    name: 'Quá tải quầy phục vụ (Khách / Quầy)',
+    enabled: true,
+    type: 'overload',
+    zalo: {
+      enabled: true,
+      urgency: 2,
+      cooldownMinutes: 3,
+      messageTemplate: '🚨 [upper]{ten_quay}[/upper] khách chờ tăng nhanh!',
+      styles: [],
+    },
+  },
+  {
+    id: 'scenario-imbalance',
+    name: 'Lệch tải giữa Nhà thuốc 1 & Nhà thuốc 2',
+    enabled: true,
+    type: 'imbalance',
+    zalo: {
+      enabled: true,
+      urgency: 1,
+      cooldownMinutes: 3,
+      messageTemplate: '⚠️ Lệch khách chờ giữa NT1 và NT2 ({so_lech} khách)!',
+      styles: [],
+    },
+  },
+  {
+    id: 'scenario-crowded',
+    name: 'Ngưỡng cao điểm đông khách',
+    enabled: true,
+    type: 'crowded',
+    zalo: {
+      enabled: true,
+      urgency: 1,
+      cooldownMinutes: 3,
+      messageTemplate: '[CAO ĐIỂM] [upper]{ten_quay}[/upper] đang có {so_khach} khách chờ phục vụ.',
+      styles: [],
+    },
+  },
+  {
+    id: 'scenario-reinforced',
+    name: 'Ghi nhận quầy tăng cường phục vụ',
+    enabled: true,
+    type: 'reinforced',
+    zalo: {
+      enabled: true,
+      urgency: 0,
+      cooldownMinutes: 3,
+      messageTemplate: '[TĂNG CƯỜNG] [upper]{ten_quay}[/upper] đã mở thêm {danh_sach_quay_moi}!',
+      styles: [],
+    },
+  },
+  {
+    id: 'scenario-low-traffic',
+    name: 'Hạ tải an toàn & Vãn khách',
+    enabled: true,
+    type: 'low_traffic',
+    zalo: {
+      enabled: true,
+      urgency: 0,
+      cooldownMinutes: 3,
+      messageTemplate: '[ĐANG GIẢI ÁP] [upper]{ten_quay}[/upper] đang giải áp đợt cao điểm, hiện tại đang có ({so_khach} khách chờ / {so_quay} quầy).',
+      styles: [],
+    },
+  },
+];
+
+const DEFAULT_PHARMACIES = [
+  { id: 'nt-1', code: 'NT1', name: 'Nhà thuốc 1', roomId: '61c5c1802e9902406bb4b93d', url: 'https://qms.tahospital.vn/view/61c5c1802e9902406bb4b93d', enabled: true },
+  { id: 'nt-2', code: 'NT2', name: 'Nhà thuốc 2', roomId: '62b9400190350c1d96ac9515', url: 'https://qms.tahospital.vn/view/62b9400190350c1d96ac9515', enabled: true },
+  { id: 'nt-3', code: 'NT3', name: 'Nhà thuốc 3', roomId: '637310582555bd22685d0724', url: 'https://qms.tahospital.vn/view/637310582555bd22685d0724', enabled: true },
+  { id: 'nt-4', code: 'NT4', name: 'Nhà thuốc 4', roomId: '65f3b899c01f53001c34e9a6', url: 'https://qms.tahospital.vn/view/65f3b899c01f53001c34e9a6', enabled: true },
+];
+
+function loadSavedRules() {
+  if (fs.existsSync(RULES_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(RULES_FILE, 'utf-8'));
+    } catch {}
+  }
+  return { scenarios: DEFAULT_SCENARIOS_PRESET };
+}
+
+function loadSavedPharmacies() {
+  if (fs.existsSync(PHARMACIES_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(PHARMACIES_FILE, 'utf-8'));
+    } catch {}
+  }
+  return DEFAULT_PHARMACIES;
+}
+
+let activeRules = loadSavedRules();
+let activePharmacies = loadSavedPharmacies();
+let lastFrontendHeartbeat = 0;
+
+/**
+ * Biên dịch mẫu tin nhắn theo đúng định dạng biến & thẻ phong cách Zalo
+ */
+function compileTemplate(template, vars, defaultStyles = []) {
+  if (!template) return { message: '', styles: [] };
+
+  // 1. Thay thế biến số động
+  let text = template;
+  for (const [key, val] of Object.entries(vars)) {
+    text = text.replaceAll(`{${key}}`, String(val ?? ''));
+  }
+
+  // 2. Bóc tách thẻ định dạng [upper], [b], [i], [big], [color]
+  let plain = '';
+  const styles = [...(defaultStyles || [])];
+  const tagRegex = /\[(\/?)(b|i|u|s|big|small|upper|color)(?:=([^\]]+))?\]/gi;
+  let lastIndex = 0;
+  const openStack = [];
+  let upperCount = 0;
+  let match;
+
+  while ((match = tagRegex.exec(text)) !== null) {
+    const rawTag = match[0];
+    const isClosing = match[1] === '/';
+    const tagName = match[2].toLowerCase();
+    const tagAttr = match[3];
+    const index = match.index;
+
+    if (index > lastIndex) {
+      let chunk = text.substring(lastIndex, index);
+      if (upperCount > 0) chunk = chunk.toLocaleUpperCase('vi-VN');
+      plain += chunk;
+    }
+    lastIndex = tagRegex.lastIndex;
+
+    if (!isClosing) {
+      if (tagName === 'upper') {
+        upperCount++;
+      } else {
+        openStack.push({ tag: tagName, attr: tagAttr, start: plain.length });
+      }
+    } else {
+      if (tagName === 'upper') {
+        if (upperCount > 0) upperCount--;
+      } else {
+        const foundIdx = openStack.map((o) => o.tag).lastIndexOf(tagName);
+        if (foundIdx !== -1) {
+          const opened = openStack.splice(foundIdx, 1)[0];
+          const len = plain.length - opened.start;
+          if (len > 0) {
+            let styleCode = '';
+            if (opened.tag === 'b') styleCode = 'b';
+            else if (opened.tag === 'i') styleCode = 'i';
+            else if (opened.tag === 'u') styleCode = 'u';
+            else if (opened.tag === 's') styleCode = 's';
+            else if (opened.tag === 'big') styleCode = 'f_18';
+            else if (opened.tag === 'small') styleCode = 'f_13';
+            else if (opened.tag === 'color' && opened.attr) {
+              const c = opened.attr.trim().replace('#', '');
+              styleCode = c.startsWith('c_') ? c : `c_${c}`;
+            }
+            if (styleCode) {
+              styles.push({ start: opened.start, len, st: styleCode });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (lastIndex < text.length) {
+    let trailing = text.substring(lastIndex);
+    if (upperCount > 0) trailing = trailing.toLocaleUpperCase('vi-VN');
+    plain += trailing;
+  }
+
+  return { message: plain, styles };
+}
+
+// Endpoint nhận heartbeat và đồng bộ cấu hình từ Dashboard
+app.post('/api/heartbeat', (req, res) => {
+  lastFrontendHeartbeat = Date.now();
+  const { pharmacies, rules } = req.body || {};
+  if (Array.isArray(pharmacies) && pharmacies.length > 0) {
+    activePharmacies = pharmacies;
+    try {
+      fs.writeFileSync(PHARMACIES_FILE, JSON.stringify(pharmacies, null, 2), 'utf-8');
+    } catch {}
+  }
+  if (rules && rules.scenarios) {
+    activeRules = rules;
+    try {
+      fs.writeFileSync(RULES_FILE, JSON.stringify(rules, null, 2), 'utf-8');
+    } catch {}
+  }
+  res.json({ ok: true, isFrontendActive: true });
+});
+
+// 9. Autonomous Background Watchdog (Tự động giám sát khi người dùng bấm X tắt app điều phối)
+let isBgFetching = false;
+setInterval(async () => {
+  // Nếu Frontend đang mở (heartbeat trong vòng 15 giây) -> Dịch vụ ngầm nhường quyền cho Frontend
+  const isFrontendActive = Date.now() - lastFrontendHeartbeat < 15000;
+  if (isFrontendActive || isBgFetching || !zaloApi || !alertConfig.enabled) {
+    return;
+  }
+
+  isBgFetching = true;
+  try {
+    const listToMonitor = activePharmacies && activePharmacies.length > 0 ? activePharmacies : DEFAULT_PHARMACIES;
+    const scenarios = activeRules?.scenarios || DEFAULT_SCENARIOS_PRESET;
+
+    for (const ph of listToMonitor) {
+      if (!ph.enabled || !ph.roomId) continue;
+
+      try {
+        const res = await fetch(`https://qms.tahospital.vn/api/v1/waitqueue?room=${ph.roomId}&status=lcd`);
+        if (!res.ok) continue;
+        const json = await res.json();
+        const items = json?.data?.data || [];
+        const waiting = items.filter((i) => i.status === 1).length;
+        const serving = items.filter((i) => i.status === 2);
+        const counters = [...new Set(serving.map((i) => String(i.counter)).filter(Boolean))];
+
+        const isNoCounter = waiting > 0 && counters.length === 0;
+        const isOverload = counters.length > 0 && waiting / counters.length >= 3 && waiting >= 4;
+
+        if (isNoCounter || isOverload) {
+          // Lấy đúng kịch bản mà người dùng đã cấu hình
+          const scenarioType = isNoCounter ? 'no_counter' : 'overload';
+          const scenario = scenarios.find((s) => s.type === scenarioType);
+
+          // Nếu kịch bản bị tắt hoặc không cho phép gửi Zalo -> Bỏ qua
+          if (!scenario || !scenario.enabled || !scenario.zalo?.enabled) {
+            continue;
+          }
+
+          const alertKey = isNoCounter ? `no-counter-${ph.id}` : `overload-${ph.id}`;
+          const cooldownMinutes = scenario.zalo?.cooldownMinutes || alertConfig.cooldownMinutes || 3;
+          const cooldownMs = cooldownMinutes * 60 * 1000;
+          const lastSent = alertHistory.get(alertKey);
+          const now = Date.now();
+
+          if (!lastSent || now - lastSent.timestamp >= cooldownMs) {
+            console.log(`[Background Watchdog] Kích hoạt kịch bản [${scenario.name}] tại ${ph.name}: Chờ ${waiting}, Quầy ${counters.length}`);
+            const timeStr = new Date().toLocaleTimeString('vi-VN');
+
+            // Chuẩn bị biến số
+            const vars = {
+              ten_quay: ph.name,
+              ma_quay: ph.code,
+              so_khach: waiting,
+              dang_phuc_vu: serving.length,
+              so_quay: counters.length,
+              danh_sach_quay_mo: counters.length > 0 ? counters.map((c) => `Quầy ${c}`).join(', ') : 'Chưa có',
+              tai_trong: counters.length > 0 ? (waiting / counters.length).toFixed(1) : String(waiting),
+              gio_hien_tai: timeStr,
+              thoi_gian: scenario.thresholds?.delaySeconds || 60,
+              quay_can_mo: Math.max(1, Math.ceil(waiting / 3) - counters.length),
+            };
+
+            // Biên dịch mẫu tin nhắn chuẩn 100% từ cấu hình của Admin
+            const { message: compiledMsg, styles: compiledStyles } = compileTemplate(
+              scenario.zalo.messageTemplate,
+              vars,
+              scenario.zalo.styles || []
+            );
+
+            alertHistory.set(alertKey, { timestamp: now });
+
+            // Gửi tin nhắn kèm ảnh thực tế QMS nguyên bản 100%
+            await executeSendMessage(
+              compiledMsg,
+              ph.zaloTargetType || alertConfig.targetType,
+              ph.zaloTargetId || alertConfig.targetId,
+              compiledStyles,
+              scenario.zalo.urgency !== undefined ? scenario.zalo.urgency : 2,
+              scenario.zalo.mentionMembers || [],
+              null,
+              ph.url,
+              ph.captureZoom || 0.85
+            );
+          }
+        }
+      } catch {
+        // Bỏ qua lỗi kết nối từng quầy
+      }
+    }
+  } catch (e) {
+    console.error('[Background Watchdog] Lỗi:', e?.message || e);
+  } finally {
+    isBgFetching = false;
+  }
+}, 5000);
+
 // Chống crash: Bắt mọi ngoại lệ để dịch vụ chạy bền bỉ 24/7
 process.on('uncaughtException', (err) => {
   console.error('[Zalo Service] Đã ngăn chặn lỗi ngoại lệ (Uncaught Exception):', err?.message || err);

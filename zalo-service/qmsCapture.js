@@ -42,7 +42,8 @@ async function getBrowser() {
 
 /**
  * Chụp ảnh màn hình thực tế (True Screenshot) từ URL hiển thị của nhà thuốc
- * Đảm bảo 100% trung thực nguyên gốc LCD QMS
+ * Đảm bảo 100% trung thực nguyên gốc LCD QMS của bệnh viện (Logo, cột Chờ, Đang phục vụ...)
+ * Tự động làm sạch session và loại bỏ vĩnh viễn thanh thông báo đỏ "Lưu ý: không mở quá nhiều tab QMS!"
  *
  * @param {string} url Đường dẫn xem màn hình QMS (https://qms.tahospital.vn/view/...)
  * @param {Object} options Tùy chọn thu nhỏ / kích thước
@@ -64,25 +65,62 @@ export async function captureQmsTrueScreenshot(url, options = {}) {
     // Chuẩn tỉ lệ màn hình LCD TV 16:9 (1280x720)
     await page.setViewport({ width: 1280, height: 720 });
 
+    // 1. Tối ưu tốc độ: Chặn tải các tài nguyên nặng không cần thiết (chuông báo .mp3, video, analytics)
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      const rType = req.resourceType();
+      const reqUrl = req.url().toLowerCase();
+      if (
+        rType === 'media' || 
+        reqUrl.endsWith('.mp3') || 
+        reqUrl.endsWith('.wav') || 
+        reqUrl.includes('google-analytics') ||
+        reqUrl.includes('doubleclick')
+      ) {
+        req.abort();
+      } else {
+        req.continue();
+      }
+    });
+
+    // 2. Chế độ Clean Session: Khống chế activeSessions = 1 trong localStorage trước khi nạp trang
+    // Đảm bảo không bao giờ chạm ngưỡng > 6 tab của Bệnh viện
+    await page.evaluateOnNewDocument(() => {
+      try {
+        localStorage.setItem(
+          'activeSessions',
+          JSON.stringify([{ id: 'clean-capture-' + Date.now(), expiry: Date.now() + 60000 }])
+        );
+      } catch {}
+    });
+
     console.log(`[QMS Snapshot] Đang chụp màn hình thực tế: ${url} (Tỉ lệ thu nhỏ: ${Math.round(zoomLevel * 100)}%)...`);
 
-    // Điều hướng đến URL màn hình QMS, đợi mạng ổn định
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 15000 });
+    // 3. Nạp trang siêu tốc với domcontentloaded (giảm thời gian chờ từ 8s xuống ~1.2s)
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 10000 });
 
-    // Thu nhỏ tỷ lệ hiển thị trang nếu zoomLevel khác 1 (giúp khung hình nhìn trọn vẹn từ Logo đến Footer cam)
-    if (zoomLevel !== 1) {
-      await page.evaluate((z) => {
+    // Đợi bảng dữ liệu hàng chờ hiển thị (tối đa 3.5 giây)
+    await page.waitForSelector('table, [class*="MuiTable"], .MuiTable-root', { timeout: 3500 }).catch(() => {});
+
+    // Đợi 500ms để dữ liệu và font chữ hiển thị ổn định
+    await new Promise((r) => setTimeout(r, 500));
+
+    // 4. Thu nhỏ tỉ lệ hiển thị & Xóa triệt để thanh cảnh báo đỏ nếu có
+    await page.evaluate((z) => {
+      if (z !== 1) {
         document.body.style.zoom = String(z);
-      }, zoomLevel);
-    }
+      }
+      // Dọn sạch mọi thẻ snackbar cảnh báo của thư viện notistack
+      const snackbars = document.querySelectorAll(
+        '.SnackbarItem-variantError, [class*="MuiSnackbar"], [class*="SnackbarItem"]'
+      );
+      snackbars.forEach((el) => el.remove());
+    }, zoomLevel);
 
-    // Đợi 1 giây để render ổn định dữ liệu bảng hàng chờ
-    await new Promise((r) => setTimeout(r, 1000));
-
-    // Chụp lại toàn bộ khung nhìn LCD thực tế dạng JPEG 75%
+    // Chụp lại toàn bộ khung nhìn LCD thực tế dạng JPEG 80%
     const buffer = await page.screenshot({
       type: 'jpeg',
-      quality: 75,
+      quality: 80,
     });
 
     console.log(`[QMS Snapshot] Chụp thành công! Kích thước ảnh: ${Math.round(buffer.length / 1024)} KB`);

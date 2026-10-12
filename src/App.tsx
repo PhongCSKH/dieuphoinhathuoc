@@ -12,7 +12,8 @@ import { evaluateDispatchRules, buildAllVariables } from './utils/dispatchEngine
 import { compileZaloMessage } from './utils/zaloTextCompiler';
 import { soundManager } from './utils/audio';
 import { 
-  dispatchZaloAlert, 
+  dispatchZaloAlert,
+  sendHeartbeat,
 } from './utils/zalo';
 import { generateDispatchSnapshot } from './utils/snapshotGenerator';
 
@@ -450,6 +451,8 @@ export const App: React.FC = () => {
         }
       } finally {
         isFetchingTelemetryRef.current = false;
+        // Gửi heartbeat đồng bộ danh sách nhà thuốc & kịch bản xuống background service
+        sendHeartbeat(pharmaciesRef.current, rules).catch(() => {});
       }
     };
 
