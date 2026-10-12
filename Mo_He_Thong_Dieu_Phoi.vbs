@@ -1,7 +1,7 @@
 Set WshShell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 
-rootDir = fso.GetParentFolderName(WScript.ScriptFullName)
+rootDir = fso.GetFolder(fso.GetParentFolderName(WScript.ScriptFullName)).ShortPath
 zaloDir = rootDir & "\zalo-service"
 
 ' 1. Khoi dong Trinh quan ly Khay he thong (System Tray Icon) va Dịch vu ngam 24/7
