@@ -9,8 +9,7 @@ checkCmd = "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -C
 WshShell.Run checkCmd, 0, True
 
 ' 2. Khoi dong Trinh quan ly Khay he thong (System Tray Icon)
-trayStart = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command ""$proc = Get-CimInstance Win32_Process -Filter \""CommandLine LIKE '%tray_monitor.ps1%'\""; if (-not $proc) { Start-Process 'wscript.exe' -ArgumentList '\""" & zaloDir & "\start_tray.vbs\""' -WindowStyle Hidden }"""
-WshShell.Run trayStart, 0, False
+WshShell.Run """" & zaloDir & "\start_tray.vbs""", 0, False
 
 ' 3. Tim Chrome va khoi dong che do App sach se
 chromePath = ""

@@ -7,6 +7,12 @@ $rootDir = Split-Path -Parent $scriptDir
 $nodeExe = "C:\Program Files\nodejs\node.exe"
 if (-not (Test-Path $nodeExe)) { $nodeExe = "node" }
 
+# Đảm bảo chỉ có duy nhất 1 tiến trình tray_monitor chạy
+$existing = Get-CimInstance Win32_Process -Filter "Name LIKE 'powershell%' AND CommandLine LIKE '%tray_monitor.ps1%'" -ErrorAction SilentlyContinue | Where-Object { $_.ProcessId -ne $PID }
+if ($existing) {
+    exit
+}
+
 # 1. Hàm đảm bảo tiến trình node server.js luôn chạy ngầm
 function Ensure-NodeServer {
     $conn = Get-NetTCPConnection -LocalPort 5050 -State Listen -ErrorAction SilentlyContinue
